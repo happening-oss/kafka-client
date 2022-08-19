@@ -1,5 +1,7 @@
 defmodule KafkaClient.Consumer do
-  def start do
+  use GenServer
+
+  def start_link do
     params = %{
       "bootstrap.servers" => "localhost:9092",
       "group.id" => "test",
@@ -8,6 +10,12 @@ defmodule KafkaClient.Consumer do
       "max.poll.interval.ms" => 1000
     }
 
+    poll_duration = 100
+    GenServer.start_link(__MODULE__, {params, poll_duration})
+  end
+
+  @impl GenServer
+  def init({params, poll_duration}) do
     port =
       Port.open(
         {:spawn_executable, System.find_executable("java")},
@@ -24,15 +32,25 @@ defmodule KafkaClient.Consumer do
         ]
       )
 
-    Stream.repeatedly(fn ->
-      Port.command(port, :erlang.term_to_binary({:poll, 100}))
+    state = %{port: port, poll_duration: poll_duration}
+    poll(state)
 
-      receive do
-        {^port, {:data, data}} -> IO.inspect(:erlang.binary_to_term(data))
-      after
-        100 -> :ok
-      end
-    end)
-    |> Stream.run()
+    {:ok, state}
+  end
+
+  @impl GenServer
+  def handle_info(:poll, state) do
+    poll(state)
+    {:noreply, state}
+  end
+
+  def handle_info({port, {:data, data}}, %{port: port} = state) do
+    IO.inspect(:erlang.binary_to_term(data))
+    {:noreply, state}
+  end
+
+  defp poll(state) do
+    Port.command(state.port, :erlang.term_to_binary({:poll, state.poll_duration}))
+    Process.send_after(self(), :poll, state.poll_duration)
   end
 end
