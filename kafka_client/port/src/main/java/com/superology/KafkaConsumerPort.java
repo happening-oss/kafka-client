@@ -19,27 +19,23 @@ public class KafkaConsumerPort {
         var consumer = consumer(args[0])) {
       var output = KafkaConsumerOutput.start();
 
+      var topics = new ArrayList<String>();
       var topicBytes = java.util.Base64.getDecoder().decode(args[1]);
-      try (var inputStream = new OtpInputStream(topicBytes)) {
-        var topics = new ArrayList<String>();
-        for (var topic : (OtpErlangList) inputStream.read_any())
-          topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
-        System.out.println("subscribing to: " + topics.toString());
-        consumer.subscribe(topics);
-      }
+      for (var topic : (OtpErlangList) otpDecode(topicBytes))
+        topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
+      System.out.println("subscribing to: " + topics.toString());
+      consumer.subscribe(topics);
 
       while (true) {
         var length = readInt(input);
         var bytes = readBytes(input, length);
+        var tuple = (OtpErlangTuple) otpDecode(bytes);
 
-        try (var inputStream = new OtpInputStream(bytes)) {
-          var tuple = (OtpErlangTuple) inputStream.read_any();
-          switch (tuple.elementAt(0).toString()) {
-            case "poll":
-              var duration = ((OtpErlangLong) tuple.elementAt(1)).intValue();
-              var records = consumer.poll(java.time.Duration.ofMillis(duration));
-              output.write(records);
-          }
+        switch (tuple.elementAt(0).toString()) {
+          case "poll":
+            var duration = ((OtpErlangLong) tuple.elementAt(1)).intValue();
+            var records = consumer.poll(java.time.Duration.ofMillis(duration));
+            output.write(records);
         }
       }
     } catch (java.io.EOFException e) {
@@ -68,25 +64,29 @@ public class KafkaConsumerPort {
   private static KafkaConsumer<String, byte[]> consumer(String encodedParams)
       throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
     var consumerProps = new java.util.Properties();
-
     var paramBytes = java.util.Base64.getDecoder().decode(encodedParams);
-    try (var inputStream = new OtpInputStream(paramBytes)) {
-      var params = (OtpErlangMap) inputStream.read_any();
-      for (var foo : params.entrySet()) {
-        var key = new String(((OtpErlangBinary) foo.getKey()).binaryValue());
-        Object value;
+    var params = (OtpErlangMap) otpDecode(paramBytes);
 
-        if (foo.getValue() instanceof OtpErlangBinary)
-          value = new String(((OtpErlangBinary) foo.getValue()).binaryValue());
-        else if (foo.getValue() instanceof OtpErlangLong)
-          value = ((OtpErlangLong) foo.getValue()).intValue();
-        else
-          throw new Exception("unknown type " + foo.getValue().getClass().toString());
+    for (var foo : params.entrySet()) {
+      var key = new String(((OtpErlangBinary) foo.getKey()).binaryValue());
+      Object value;
 
-        consumerProps.put(key, value);
-      }
+      if (foo.getValue() instanceof OtpErlangBinary)
+        value = new String(((OtpErlangBinary) foo.getValue()).binaryValue());
+      else if (foo.getValue() instanceof OtpErlangLong)
+        value = ((OtpErlangLong) foo.getValue()).intValue();
+      else
+        throw new Exception("unknown type " + foo.getValue().getClass().toString());
+
+      consumerProps.put(key, value);
     }
 
     return new KafkaConsumer<String, byte[]>(consumerProps);
+  }
+
+  private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {
+    try (var inputStream = new OtpInputStream(encoded)) {
+      return inputStream.read_any();
+    }
   }
 }
