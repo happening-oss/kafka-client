@@ -15,7 +15,7 @@ public class KafkaConsumerPort {
     System.out.println("kafka consumer port started");
 
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"));
-        var consumer = consumer()) {
+        var consumer = consumer(args[0])) {
       var output = KafkaConsumerOutput.start();
 
       var topics = java.util.Arrays.asList("mytopic");
@@ -25,7 +25,7 @@ public class KafkaConsumerPort {
         var length = readInt(input);
         var bytes = readBytes(input, length);
 
-        try (var inputStream = new OtpInputStream(bytes, 0)) {
+        try (var inputStream = new OtpInputStream(bytes)) {
           var tuple = (OtpErlangTuple) inputStream.read_any();
           switch (tuple.elementAt(0).toString()) {
             case "poll":
@@ -58,13 +58,27 @@ public class KafkaConsumerPort {
     return bytes;
   }
 
-  private static KafkaConsumer<String, byte[]> consumer() {
+  private static KafkaConsumer<String, byte[]> consumer(String encodedParams)
+      throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
     var consumerProps = new java.util.Properties();
-    consumerProps.put("bootstrap.servers", "localhost:9092");
-    consumerProps.put("group.id", "test");
-    consumerProps.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-    consumerProps.put("value.deserializer", "org.apache.kafka.common.serialization.ByteArrayDeserializer");
-    consumerProps.put("max.poll.interval.ms", 1000);
+
+    var paramBytes = java.util.Base64.getDecoder().decode(encodedParams);
+    try (var inputStream = new OtpInputStream(paramBytes)) {
+      var params = (OtpErlangMap) inputStream.read_any();
+      for (var foo : params.entrySet()) {
+        var key = new String(((OtpErlangBinary) foo.getKey()).binaryValue());
+        Object value;
+
+        if (foo.getValue() instanceof OtpErlangBinary)
+          value = new String(((OtpErlangBinary) foo.getValue()).binaryValue());
+        else if (foo.getValue() instanceof OtpErlangLong)
+          value = ((OtpErlangLong) foo.getValue()).intValue();
+        else
+          throw new Exception("unknown type " + foo.getValue().getClass().toString());
+
+        consumerProps.put(key, value);
+      }
+    }
 
     return new KafkaConsumer<String, byte[]>(consumerProps);
   }

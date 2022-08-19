@@ -1,5 +1,13 @@
 defmodule KafkaClient.Consumer do
   def start do
+    params = %{
+      "bootstrap.servers" => "localhost:9092",
+      "group.id" => "test",
+      "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
+      "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer",
+      "max.poll.interval.ms" => 1000
+    }
+
     port =
       Port.open(
         {:spawn_executable, System.find_executable("java")},
@@ -10,7 +18,8 @@ defmodule KafkaClient.Consumer do
           args: [
             "-cp",
             "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
-            "com.superology.KafkaConsumerPort"
+            "com.superology.KafkaConsumerPort",
+            params |> :erlang.term_to_binary() |> Base.encode64()
           ]
         ]
       )
