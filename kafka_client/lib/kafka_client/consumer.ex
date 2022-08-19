@@ -10,12 +10,14 @@ defmodule KafkaClient.Consumer do
       "max.poll.interval.ms" => 1000
     }
 
+    topics = ["mytopic"]
+
     poll_duration = 100
-    GenServer.start_link(__MODULE__, {params, poll_duration})
+    GenServer.start_link(__MODULE__, {params, topics, poll_duration})
   end
 
   @impl GenServer
-  def init({params, poll_duration}) do
+  def init({params, topics, poll_duration}) do
     port =
       Port.open(
         {:spawn_executable, System.find_executable("java")},
@@ -27,7 +29,8 @@ defmodule KafkaClient.Consumer do
             "-cp",
             "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
             "com.superology.KafkaConsumerPort",
-            params |> :erlang.term_to_binary() |> Base.encode64()
+            params |> :erlang.term_to_binary() |> Base.encode64(),
+            topics |> :erlang.term_to_binary() |> Base.encode64()
           ]
         ]
       )

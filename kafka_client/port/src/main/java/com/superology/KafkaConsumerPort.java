@@ -3,6 +3,7 @@ package com.superology;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 
@@ -18,8 +19,14 @@ public class KafkaConsumerPort {
         var consumer = consumer(args[0])) {
       var output = KafkaConsumerOutput.start();
 
-      var topics = java.util.Arrays.asList("mytopic");
-      consumer.subscribe(topics);
+      var topicBytes = java.util.Base64.getDecoder().decode(args[1]);
+      try (var inputStream = new OtpInputStream(topicBytes)) {
+        var topics = new ArrayList<String>();
+        for (var topic : (OtpErlangList) inputStream.read_any())
+          topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
+        System.out.println("subscribing to: " + topics.toString());
+        consumer.subscribe(topics);
+      }
 
       while (true) {
         var length = readInt(input);
