@@ -3,9 +3,10 @@ package com.superology;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Properties;
 
 import com.ericsson.otp.erlang.*;
 
@@ -13,33 +14,21 @@ public class KafkaConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
-    System.out.println("kafka consumer port started");
+    System.out.println("kafka consumer port started\r");
 
-    try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"));
-        var consumer = consumer(args[0])) {
+    try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
+      var consumerProps = decodeProperties(args[0]);
+      var topics = decodeTopics(args[1]);
       var output = KafkaConsumerOutput.start();
-
-      var topics = new ArrayList<String>();
-      var topicBytes = java.util.Base64.getDecoder().decode(args[1]);
-      for (var topic : (OtpErlangList) otpDecode(topicBytes))
-        topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
-      System.out.println("subscribing to: " + topics.toString());
-      consumer.subscribe(topics);
+      var pollInterval = ((OtpErlangLong) otpDecode(java.util.Base64.getDecoder().decode(args[2]))).longValue();
+      KafkaConsumerPoller.start(consumerProps, topics, pollInterval, output);
 
       while (true) {
         var length = readInt(input);
-        var bytes = readBytes(input, length);
-        var tuple = (OtpErlangTuple) otpDecode(bytes);
-
-        switch (tuple.elementAt(0).toString()) {
-          case "poll":
-            var duration = ((OtpErlangLong) tuple.elementAt(1)).intValue();
-            var records = consumer.poll(java.time.Duration.ofMillis(duration));
-            output.write(records);
-        }
+        readBytes(input, length);
       }
     } catch (java.io.EOFException e) {
-      System.out.println("kafka consumer port stopped");
+      System.out.println("kafka consumer port stopped\r");
       System.exit(0);
     } catch (Exception e) {
       System.err.println(e.getMessage());
@@ -61,27 +50,35 @@ public class KafkaConsumerPort {
     return bytes;
   }
 
-  private static KafkaConsumer<String, byte[]> consumer(String encodedParams)
+  private static Properties decodeProperties(String encoded)
       throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
-    var consumerProps = new java.util.Properties();
-    var paramBytes = java.util.Base64.getDecoder().decode(encodedParams);
+    var consumerProps = new Properties();
+    var paramBytes = java.util.Base64.getDecoder().decode(encoded);
     var params = (OtpErlangMap) otpDecode(paramBytes);
 
-    for (var foo : params.entrySet()) {
-      var key = new String(((OtpErlangBinary) foo.getKey()).binaryValue());
+    for (var param : params.entrySet()) {
+      var key = new String(((OtpErlangBinary) param.getKey()).binaryValue());
       Object value;
 
-      if (foo.getValue() instanceof OtpErlangBinary)
-        value = new String(((OtpErlangBinary) foo.getValue()).binaryValue());
-      else if (foo.getValue() instanceof OtpErlangLong)
-        value = ((OtpErlangLong) foo.getValue()).intValue();
+      if (param.getValue() instanceof OtpErlangBinary)
+        value = new String(((OtpErlangBinary) param.getValue()).binaryValue());
+      else if (param.getValue() instanceof OtpErlangLong)
+        value = ((OtpErlangLong) param.getValue()).intValue();
       else
-        throw new Exception("unknown type " + foo.getValue().getClass().toString());
+        throw new Exception("unknown type " + param.getValue().getClass().toString());
 
       consumerProps.put(key, value);
     }
 
-    return new KafkaConsumer<String, byte[]>(consumerProps);
+    return consumerProps;
+  }
+
+  private static Collection<String> decodeTopics(String encoded) throws IOException, OtpErlangDecodeException {
+    var topics = new ArrayList<String>();
+    var topicBytes = java.util.Base64.getDecoder().decode(encoded);
+    for (var topic : (OtpErlangList) otpDecode(topicBytes))
+      topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
+    return topics;
   }
 
   private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {
