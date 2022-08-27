@@ -96,6 +96,8 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_stopped_child({{:processor, {topic, partition}}, _process_info}, state) do
+    state.driver_callback.notify_processed(state.driver_instance, topic, partition)
+
     case Map.fetch(state.buffers, {topic, partition}) do
       :error ->
         state

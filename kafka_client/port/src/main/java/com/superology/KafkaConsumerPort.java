@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Properties;
 
+import org.apache.kafka.common.TopicPartition;
+
 import com.ericsson.otp.erlang.*;
 
 public class KafkaConsumerPort {
@@ -21,11 +23,19 @@ public class KafkaConsumerPort {
       var topics = decodeTopics(args[1]);
       var output = KafkaConsumerOutput.start();
       var pollInterval = ((OtpErlangLong) otpDecode(java.util.Base64.getDecoder().decode(args[2]))).longValue();
-      KafkaConsumerPoller.start(consumerProps, topics, pollInterval, output);
+      var poller = KafkaConsumerPoller.start(consumerProps, topics, pollInterval, output);
 
       while (true) {
         var length = readInt(input);
-        readBytes(input, length);
+        var messageBytes = readBytes(input, length);
+        var message = (OtpErlangTuple) otpDecode(messageBytes);
+
+        switch (message.elementAt(0).toString()) {
+          case "notify_processed":
+            var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
+            var partition = ((OtpErlangLong) message.elementAt(2)).intValue();
+            poller.ack(new TopicPartition(topic, partition));
+        }
       }
     } catch (java.io.EOFException e) {
       System.out.println("kafka consumer port stopped\r");

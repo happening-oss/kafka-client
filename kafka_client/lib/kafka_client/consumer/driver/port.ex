@@ -31,4 +31,10 @@ defmodule KafkaClient.Consumer.Driver.Port do
       {:DOWN, ^mref, _, _, _status} -> :ok
     end
   end
+
+  @impl KafkaClient.Consumer.Driver
+  def notify_processed(port, topic, partition) do
+    Port.command(port, :erlang.term_to_binary({:notify_processed, topic, partition}))
+    :ok
+  end
 end

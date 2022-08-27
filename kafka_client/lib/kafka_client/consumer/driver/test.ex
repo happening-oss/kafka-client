@@ -28,6 +28,9 @@ defmodule KafkaClient.Consumer.Driver.Test do
   @impl KafkaClient.Consumer.Driver
   def close(pid), do: GenServer.stop(pid)
 
+  @impl KafkaClient.Consumer.Driver
+  def notify_processed(_port, _topic, _partition), do: :ok
+
   @impl GenServer
   def init(owner_pid), do: {:ok, owner_pid}
 
