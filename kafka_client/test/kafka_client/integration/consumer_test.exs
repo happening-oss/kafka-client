@@ -5,13 +5,9 @@ defmodule KafkaClient.Integration.ConsumerTest do
 
   test "consumes kafka messages" do
     brokers = [{"localhost", 9092}]
-
     topic = "kafka_client_test_topic"
 
-    :os.cmd('''
-      docker exec -i broker kafka-topics --bootstrap-server broker:9092 --delete --topic #{topic}
-      docker exec -i broker kafka-topics --bootstrap-server broker:9092 --create --topic #{topic}
-    ''')
+    KafkaClient.Admin.recreate_topic(brokers, topic)
 
     test_pid = self()
 

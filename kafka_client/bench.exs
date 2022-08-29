@@ -8,11 +8,7 @@ batch_size = div(1_000_000, message_size) |> max(1) |> min(100)
 message = String.duplicate("a", message_size)
 
 IO.puts("recreating topic #{topic}")
-
-:os.cmd('''
-  docker exec -i broker kafka-topics --bootstrap-server broker:9092 --delete --topic #{topic}
-  docker exec -i broker kafka-topics --bootstrap-server broker:9092 --create --topic #{topic} --partitions #{num_partitions}
-''')
+KafkaClient.Admin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
 
 IO.puts("producing messages")
 :ok = :brod.start_client(brokers, :test_client, auto_start_producers: true)
