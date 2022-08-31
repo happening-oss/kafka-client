@@ -1,10 +1,33 @@
 defmodule KafkaClient.Test.Helper do
   import ExUnit.Assertions
 
-  def start_consumer!(opts \\ []) do
-    brokers = [{"localhost", 9092}]
-    test_pid = self()
+  def initialize_producer! do
+    :ok = :brod.start_client(brokers(), :test_client, auto_start_producers: true)
+  end
 
+  def start_consumer!(opts \\ []) do
+    topics = consumer_topics(opts)
+
+    test_pid = self()
+    child_id = make_ref()
+
+    pid =
+      ExUnit.Callbacks.start_supervised!(
+        {KafkaClient.Consumer,
+         servers: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end),
+         group_id: Keyword.get(opts, :group_id, "test_group"),
+         topics: topics,
+         handler: &handle_consumer_event(&1, test_pid)},
+        id: child_id,
+        restart: :temporary
+      )
+
+    assert_receive :consuming, :timer.seconds(10)
+
+    %{pid: pid, child_id: child_id, topics: topics}
+  end
+
+  defp consumer_topics(opts) do
     topics =
       Keyword.get_lazy(
         opts,
@@ -22,42 +45,23 @@ defmodule KafkaClient.Test.Helper do
     if Keyword.get(opts, :recreate_topics?, true) do
       topics
       |> Task.async_stream(
-        &KafkaClient.Admin.recreate_topic(brokers, &1, num_partitions: 2),
+        &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
         timeout: :timer.seconds(10)
       )
       |> Stream.run()
     end
 
-    child_id = make_ref()
+    topics
+  end
 
-    pid =
-      ExUnit.Callbacks.start_supervised!(
-        {KafkaClient.Consumer,
-         servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
-         group_id: Keyword.get(opts, :group_id, "test_group"),
-         topics: topics,
-         handler: fn
-           :consuming ->
-             send(test_pid, :consuming)
+  defp handle_consumer_event(:consuming, test_pid), do: send(test_pid, :consuming)
 
-           {:polled, topic, partition, offset, _timestamp} ->
-             send(test_pid, {:polled, topic, partition, offset})
+  defp handle_consumer_event({:polled, topic, partition, offset, _timestamp}, test_pid),
+    do: send(test_pid, {:polled, topic, partition, offset})
 
-           {:record, record} ->
-             send(test_pid, {:processing, Map.put(record, :pid, self())})
-
-             receive do
-               :consume -> :ok
-             end
-         end},
-        id: child_id,
-        restart: :temporary
-      )
-
-    assert_receive :consuming, :timer.seconds(10)
-
-    :ok = :brod.start_client(brokers, :test_client, auto_start_producers: true)
-    %{pid: pid, child_id: child_id, topics: topics}
+  defp handle_consumer_event({:record, record}, test_pid) do
+    send(test_pid, {:processing, Map.put(record, :pid, self())})
+    receive(do: (:consume -> :ok))
   end
 
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
@@ -113,4 +117,6 @@ defmodule KafkaClient.Test.Helper do
   end
 
   defp state(consumer), do: :sys.get_state(consumer.pid)
+
+  defp brokers, do: [{"localhost", 9092}]
 end
