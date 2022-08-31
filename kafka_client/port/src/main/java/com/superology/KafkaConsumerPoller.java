@@ -49,12 +49,12 @@ final class KafkaConsumerPoller implements Runnable {
 
   @Override
   public void run() {
+    var isConsuming = false;
     var pausedPartitions = new HashSet<TopicPartition>();
+    var bufferUsages = new HashMap<TopicPartition, BufferUsage>();
 
     try (var consumer = new KafkaConsumer<String, byte[]>(consumerProps)) {
-      consumer.subscribe(topics);
-
-      var bufferUsages = new HashMap<TopicPartition, BufferUsage>();
+      startConsuming(consumer);
 
       while (true) {
         var assignedPartitions = consumer.assignment();
@@ -81,7 +81,6 @@ final class KafkaConsumerPoller implements Runnable {
         assignedPausedPartitions.retainAll(pausedPartitions);
         consumer.pause(assignedPausedPartitions);
 
-        var isConsuming = !assignedPartitions.isEmpty();
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
         if (!isConsuming && !consumer.assignment().isEmpty()) {
@@ -114,6 +113,19 @@ final class KafkaConsumerPoller implements Runnable {
 
   public void ack(TopicPartition topicPartition) {
     acks.add(topicPartition);
+  }
+
+  private void startConsuming(KafkaConsumer<String, byte[]> consumer) {
+    if (consumerProps.getProperty("group.id").equals("kafka_client_consumer_anonymous")) {
+      var allPartitions = new ArrayList<TopicPartition>();
+      for (var topic : topics) {
+        for (var partitionInfo : consumer.partitionsFor(topic)) {
+          allPartitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+        }
+      }
+      consumer.assign(allPartitions);
+    } else
+      consumer.subscribe(topics);
   }
 }
 

@@ -6,17 +6,27 @@ defmodule KafkaClient.Test.Helper do
     test_pid = self()
 
     topics =
-      Enum.map(
-        1..Keyword.get(opts, :num_topics, 1)//1,
-        fn _ -> "kafka_client_test_topic_#{System.unique_integer([:positive, :monotonic])}" end
+      Keyword.get_lazy(
+        opts,
+        :topics,
+        fn ->
+          Enum.map(
+            1..Keyword.get(opts, :num_topics, 1)//1,
+            fn _ ->
+              "kafka_client_test_topic_#{System.unique_integer([:positive, :monotonic])}"
+            end
+          )
+        end
       )
 
-    topics
-    |> Task.async_stream(
-      &KafkaClient.Admin.recreate_topic(brokers, &1, num_partitions: 2),
-      timeout: :timer.seconds(10)
-    )
-    |> Stream.run()
+    if Keyword.get(opts, :recreate_topics?, true) do
+      topics
+      |> Task.async_stream(
+        &KafkaClient.Admin.recreate_topic(brokers, &1, num_partitions: 2),
+        timeout: :timer.seconds(10)
+      )
+      |> Stream.run()
+    end
 
     child_id = make_ref()
 
@@ -24,7 +34,7 @@ defmodule KafkaClient.Test.Helper do
       ExUnit.Callbacks.start_supervised!(
         {KafkaClient.Consumer,
          servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
-         group_id: "test_group",
+         group_id: Keyword.get(opts, :group_id, "test_group"),
          topics: topics,
          handler: fn
            :consuming ->

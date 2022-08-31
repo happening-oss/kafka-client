@@ -5,17 +5,23 @@ defmodule KafkaClient.Consumer do
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
     topics = Keyword.fetch!(opts, :topics)
-    group_id = Keyword.fetch!(opts, :group_id)
+    group_id = Keyword.get(opts, :group_id) || "kafka_client_consumer_anonymous"
     handler = Keyword.fetch!(opts, :handler)
 
-    consumer_params = %{
-      "bootstrap.servers" => Enum.join(servers, ","),
-      "group.id" => group_id,
-      "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
-      "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer",
-      "max.poll.interval.ms" => 1000,
-      "auto.offset.reset" => "earliest"
-    }
+    consumer_params =
+      %{
+        "bootstrap.servers" => Enum.join(servers, ","),
+        "group.id" => group_id,
+        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
+        "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer",
+        "max.poll.interval.ms" => 1000,
+        "auto.offset.reset" => "earliest"
+      }
+      |> Map.merge(
+        if group_id == "kafka_client_consumer_anonymous",
+          do: %{"enable.auto.commit" => false},
+          else: %{}
+      )
 
     poll_duration = 10
 
