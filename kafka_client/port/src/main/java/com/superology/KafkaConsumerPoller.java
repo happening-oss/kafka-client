@@ -52,7 +52,6 @@ final class KafkaConsumerPoller implements Runnable {
     var pausedPartitions = new HashSet<TopicPartition>();
 
     try (var consumer = new KafkaConsumer<String, byte[]>(consumerProps)) {
-      System.out.println("subscribing to: " + topics.toString() + "\r");
       consumer.subscribe(topics);
 
       var bufferUsages = new HashMap<TopicPartition, BufferUsage>();

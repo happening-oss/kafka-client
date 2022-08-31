@@ -16,8 +16,6 @@ public class KafkaConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
-    System.out.println("kafka consumer port started\r");
-
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
       var consumerProps = decodeProperties(args[0]);
       var topics = decodeTopics(args[1]);
@@ -38,7 +36,6 @@ public class KafkaConsumerPort {
         }
       }
     } catch (java.io.EOFException e) {
-      System.out.println("kafka consumer port stopped\r");
       System.exit(0);
     } catch (Exception e) {
       System.err.println(e.getMessage());
