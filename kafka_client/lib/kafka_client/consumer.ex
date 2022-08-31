@@ -8,8 +8,6 @@ defmodule KafkaClient.Consumer do
     group_id = Keyword.fetch!(opts, :group_id)
     handler = Keyword.fetch!(opts, :handler)
 
-    driver_callback = Keyword.get(opts, :driver, KafkaClient.Consumer.Driver.Port)
-
     consumer_params = %{
       "bootstrap.servers" => Enum.join(servers, ","),
       "group.id" => group_id,
@@ -23,19 +21,18 @@ defmodule KafkaClient.Consumer do
 
     Parent.GenServer.start_link(
       __MODULE__,
-      {consumer_params, topics, poll_duration, handler, driver_callback}
+      {consumer_params, topics, poll_duration, handler}
     )
   end
 
   @impl GenServer
-  def init({consumer_params, topics, poll_duration, handler, driver_callback}) do
+  def init({consumer_params, topics, poll_duration, handler}) do
     state = %{
       consumer_params: consumer_params,
       topics: topics,
       poll_duration: poll_duration,
       handler: handler,
-      driver_callback: driver_callback,
-      driver_instance: driver_callback.open(consumer_params, topics, poll_duration),
+      port: open_port(consumer_params, topics, poll_duration),
       buffers: %{}
     }
 
@@ -43,10 +40,7 @@ defmodule KafkaClient.Consumer do
   end
 
   @impl GenServer
-  def handle_info(
-        {driver_instance, {:data, data}},
-        %{driver_instance: driver_instance} = state
-      ) do
+  def handle_info({port, {:data, data}}, %{port: port} = state) do
     case :erlang.binary_to_term(data) do
       :consuming ->
         state.handler.(:consuming)
@@ -70,24 +64,17 @@ defmodule KafkaClient.Consumer do
     end
   end
 
-  def handle_info(
-        {driver_instance, {:exit_status, status}},
-        %{driver_instance: driver_instance} = state
-      ) do
-    Logger.error("consumer driver exited with status #{status}")
+  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
+    Logger.error("port exited with status #{status}")
 
-    driver_instance =
-      state.driver_callback.open(state.consumer_params, state.topics, state.poll_interval)
-
-    state = %{state | driver_instance: driver_instance}
+    port = open_port(state.consumer_params, state.topics, state.poll_duration)
+    state = %{state | port: port}
 
     {:noreply, state}
   end
 
-  @impl GenServer
-  def terminate(_reason, state) do
-    state.driver_callback.close(state.driver_instance)
-  end
+  def handle_info({:EXIT, port, _reason}, state) when is_port(port),
+    do: {:noreply, state}
 
   @impl Parent.GenServer
   def handle_stopped_children(children, state) do
@@ -96,7 +83,7 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_stopped_child({{:processor, {topic, partition}}, _process_info}, state) do
-    state.driver_callback.notify_processed(state.driver_instance, topic, partition)
+    Port.command(state.port, :erlang.term_to_binary({:notify_processed, topic, partition}))
 
     case Map.fetch(state.buffers, {topic, partition}) do
       :error ->
@@ -139,5 +126,25 @@ defmodule KafkaClient.Consumer do
       })
 
     pid
+  end
+
+  defp open_port(consumer_params, topics, poll_interval) do
+    Port.open(
+      {:spawn_executable, System.find_executable("java")},
+      [
+        :nouse_stdio,
+        :binary,
+        :exit_status,
+        packet: 4,
+        args: [
+          "-cp",
+          "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
+          "com.superology.KafkaConsumerPort",
+          consumer_params |> :erlang.term_to_binary() |> Base.encode64(),
+          topics |> :erlang.term_to_binary() |> Base.encode64(),
+          poll_interval |> :erlang.term_to_binary() |> Base.encode64()
+        ]
+      ]
+    )
   end
 end

@@ -6,6 +6,7 @@ defmodule KafkaClient.MixProject do
       app: :kafka_client,
       version: "0.1.0",
       elixir: "~> 1.13",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases()
@@ -17,6 +18,9 @@ defmodule KafkaClient.MixProject do
       extra_applications: [:crypto, :logger]
     ]
   end
+
+  defp elixirc_paths(env) when env in [:test], do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
     [
