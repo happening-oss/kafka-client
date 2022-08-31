@@ -9,15 +9,15 @@ defmodule KafkaClient.Consumer.SequentialTest do
     produced1 = produce(topic, partition: 0)
     produced2 = produce(topic, partition: 0)
 
-    record1 = assert_started_processing(topic, 0)
+    record1 = assert_processing(topic, 0)
     assert record1.offset == produced1.offset
     assert record1.payload == produced1.payload
 
-    refute_started_processing(topic, 0)
+    refute_processing(topic, 0)
 
     resume_processing(record1)
 
-    record2 = assert_started_processing(topic, 0)
+    record2 = assert_processing(topic, 0)
     assert record2.offset == produced2.offset
     assert record2.payload == produced2.payload
   end

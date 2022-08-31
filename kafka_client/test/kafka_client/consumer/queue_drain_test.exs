@@ -9,13 +9,14 @@ defmodule KafkaClient.Consumer.QueueDrainTest do
     produce(topic, partition: 0)
     produce(topic, partition: 0)
     produce(topic, partition: 0)
-    topic |> assert_started_processing(0) |> resume_processing()
-    topic |> assert_started_processing(0) |> resume_processing()
-    topic |> assert_started_processing(0) |> resume_processing()
+
+    process_next_record!(topic, 0)
+    process_next_record!(topic, 0)
+    process_next_record!(topic, 0)
 
     assert buffers(consumer) == %{}
 
     produce(topic, partition: 0)
-    topic |> assert_started_processing(0) |> resume_processing()
+    process_next_record!(topic, 0)
   end
 end

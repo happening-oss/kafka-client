@@ -47,6 +47,8 @@ defmodule KafkaClient.Consumer do
         {:noreply, state}
 
       {:record, topic, partition, offset, timestamp, payload} ->
+        state.handler.({:polled, topic, partition, offset, timestamp})
+
         state =
           if Parent.child?({:processor, {topic, partition}}) do
             buffer =

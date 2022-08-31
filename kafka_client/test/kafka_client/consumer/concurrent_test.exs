@@ -10,8 +10,8 @@ defmodule KafkaClient.Consumer.ConcurrentTest do
     produce(topic1, partition: 1)
     produce(topic2, partition: 0)
 
-    assert_started_processing(topic1, 0)
-    assert_started_processing(topic1, 1)
-    assert_started_processing(topic2, 0)
+    assert_processing(topic1, 0)
+    assert_processing(topic1, 1)
+    assert_processing(topic2, 0)
   end
 end

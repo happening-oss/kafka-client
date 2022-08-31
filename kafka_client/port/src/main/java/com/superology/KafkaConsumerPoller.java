@@ -105,9 +105,7 @@ final class KafkaConsumerPoller implements Runnable {
             pausedPartitions.add(topicPartition);
         }
       }
-    } catch (
-
-    Exception e) {
+    } catch (Exception e) {
       System.err.println(e.getMessage());
       e.printStackTrace();
       System.exit(1);
@@ -133,7 +131,8 @@ class BufferUsage {
   }
 
   public void recordProcessed() {
-    messageSizes.remove();
+    var messageSize = messageSizes.remove();
+    totalBytes -= messageSize;
   }
 
   public boolean shouldPause() {

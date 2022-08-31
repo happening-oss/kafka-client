@@ -30,6 +30,9 @@ defmodule KafkaClient.Test.Helper do
            :consuming ->
              send(test_pid, :consuming)
 
+           {:polled, topic, partition, offset, _timestamp} ->
+             send(test_pid, {:polled, topic, partition, offset})
+
            {:record, record} ->
              send(test_pid, {:processing, Map.put(record, :pid, self())})
 
@@ -66,13 +69,29 @@ defmodule KafkaClient.Test.Helper do
     if exit_reason == :normal, do: :ok, else: {:error, exit_reason}
   end
 
-  def assert_started_processing(topic, partition) do
-    assert_receive {:processing, %{topic: ^topic, partition: ^partition} = record}
+  def assert_poll(topic, partition, offset) do
+    assert_receive {:polled, ^topic, ^partition, ^offset}, :timer.seconds(1)
+  end
+
+  def refute_poll(topic, partition, offset) do
+    refute_receive {:polled, ^topic, ^partition, ^offset}, :timer.seconds(1)
+  end
+
+  def assert_processing(topic, partition) do
+    assert_receive {:processing, %{topic: ^topic, partition: ^partition} = record},
+                   :timer.seconds(1)
+
     record
   end
 
-  def refute_started_processing(topic, partition) do
+  def refute_processing(topic, partition) do
     refute_receive {:processing, %{topic: ^topic, partition: ^partition}}
+  end
+
+  def process_next_record!(topic, partition) do
+    topic
+    |> assert_processing(partition)
+    |> resume_processing()
   end
 
   def buffers(consumer), do: state(consumer).buffers
