@@ -5,23 +5,18 @@ defmodule KafkaClient.Consumer do
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
     topics = Keyword.fetch!(opts, :topics)
-    group_id = Keyword.get(opts, :group_id) || "kafka_client_consumer_anonymous"
+    group_id = Keyword.get(opts, :group_id)
     handler = Keyword.fetch!(opts, :handler)
 
     consumer_params =
       %{
         "bootstrap.servers" => Enum.join(servers, ","),
-        "group.id" => group_id,
         "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
         "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer",
         "max.poll.interval.ms" => 1000,
         "auto.offset.reset" => "earliest"
       }
-      |> Map.merge(
-        if group_id == "kafka_client_consumer_anonymous",
-          do: %{"enable.auto.commit" => false},
-          else: %{}
-      )
+      |> Map.merge(if group_id != nil, do: %{"group.id" => group_id}, else: %{})
 
     poll_duration = 10
 
@@ -39,7 +34,8 @@ defmodule KafkaClient.Consumer do
       poll_duration: poll_duration,
       handler: handler,
       port: open_port(consumer_params, topics, poll_duration),
-      buffers: %{}
+      buffers: %{},
+      end_offsets: nil
     }
 
     {:ok, state}
@@ -51,6 +47,15 @@ defmodule KafkaClient.Consumer do
       :consuming ->
         state.handler.(:consuming)
         {:noreply, state}
+
+      {:end_offsets, end_offsets} ->
+        end_offsets =
+          for {topic, partition, offset} <- end_offsets,
+              offset > 0,
+              into: %{},
+              do: {{topic, partition}, offset}
+
+        {:noreply, maybe_notify_caught_up(%{state | end_offsets: end_offsets})}
 
       {:record, topic, partition, offset, timestamp, payload} ->
         state.handler.({:polled, topic, partition, offset, timestamp})
@@ -90,8 +95,21 @@ defmodule KafkaClient.Consumer do
     {:noreply, state}
   end
 
-  defp handle_stopped_child({{:processor, {topic, partition}}, _process_info}, state) do
+  defp handle_stopped_child({{:processor, {topic, partition}}, process_info}, state) do
     Port.command(state.port, :erlang.term_to_binary({:notify_processed, topic, partition}))
+
+    state =
+      with %{end_offsets: %{} = end_offsets} <- state do
+        end_offset = Map.get(end_offsets, {topic, partition}, 0)
+        {processed_offset, _timestamp} = process_info.meta
+
+        end_offsets =
+          if processed_offset + 1 >= end_offset,
+            do: Map.delete(end_offsets, {topic, partition}),
+            else: end_offsets
+
+        maybe_notify_caught_up(%{state | end_offsets: end_offsets})
+      end
 
     case Map.fetch(state.buffers, {topic, partition}) do
       :error ->
@@ -110,6 +128,13 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_stopped_child(_other_child, state), do: state
+
+  defp maybe_notify_caught_up(state) do
+    with %{end_offsets: end_offsets} when map_size(end_offsets) == 0 <- state do
+      state.handler.(:caught_up)
+      %{state | end_offsets: nil}
+    end
+  end
 
   defp start_processor!(topic, partition, offset, timestamp, payload, handler) do
     {:ok, pid} =

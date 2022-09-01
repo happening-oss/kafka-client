@@ -115,8 +115,8 @@ final class KafkaConsumerPoller implements Runnable {
     acks.add(topicPartition);
   }
 
-  private void startConsuming(KafkaConsumer<String, byte[]> consumer) {
-    if (consumerProps.getProperty("group.id").equals("kafka_client_consumer_anonymous")) {
+  private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
+    if (consumerProps.getProperty("group.id") == null) {
       var allPartitions = new ArrayList<TopicPartition>();
       for (var topic : topics) {
         for (var partitionInfo : consumer.partitionsFor(topic)) {
@@ -124,6 +124,19 @@ final class KafkaConsumerPoller implements Runnable {
         }
       }
       consumer.assign(allPartitions);
+
+      var highWatermarks = consumer.endOffsets(allPartitions).entrySet().stream()
+          .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
+              new OtpErlangBinary(entry.getKey().topic().getBytes()),
+              new OtpErlangInt(entry.getKey().partition()),
+              new OtpErlangLong(entry.getValue())
+          }))
+          .toArray(OtpErlangTuple[]::new);
+
+      output.write(new OtpErlangTuple(new OtpErlangObject[] {
+          new OtpErlangAtom("end_offsets"),
+          new OtpErlangList(highWatermarks) }));
+
     } else
       consumer.subscribe(topics);
   }

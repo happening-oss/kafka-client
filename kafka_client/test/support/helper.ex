@@ -55,6 +55,7 @@ defmodule KafkaClient.Test.Helper do
   end
 
   defp handle_consumer_event(:consuming, test_pid), do: send(test_pid, :consuming)
+  defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
 
   defp handle_consumer_event({:polled, topic, partition, offset, _timestamp}, test_pid),
     do: send(test_pid, {:polled, topic, partition, offset})
@@ -73,7 +74,7 @@ defmodule KafkaClient.Test.Helper do
     {:ok, offset} =
       :brod.produce_sync_offset(:test_client, topic, opts.partition, opts.key, opts.payload)
 
-    Map.put(opts, :offset, offset)
+    Map.merge(opts, %{topic: topic, offset: offset})
   end
 
   def resume_processing(record) do
@@ -101,6 +102,9 @@ defmodule KafkaClient.Test.Helper do
   def refute_processing(topic, partition) do
     refute_receive {:processing, %{topic: ^topic, partition: ^partition}}
   end
+
+  def assert_caught_up, do: assert_receive(:caught_up, :timer.seconds(1))
+  def refute_caught_up, do: refute_receive(:caught_up, :timer.seconds(1))
 
   def process_next_record!(topic, partition) do
     topic
