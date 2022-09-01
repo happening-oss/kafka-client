@@ -16,6 +16,7 @@ defmodule KafkaClient.Consumer do
         "max.poll.interval.ms" => 1000,
         "auto.offset.reset" => "earliest"
       }
+      |> Map.merge(Keyword.get(opts, :consumer_params, %{}))
       |> Map.merge(
         if group_id != nil,
           do: %{"group.id" => group_id},
@@ -48,8 +49,8 @@ defmodule KafkaClient.Consumer do
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     case :erlang.binary_to_term(data) do
-      :consuming ->
-        state.handler.(:consuming)
+      {event_name, _} = event when event_name in ~w/partitions_assigned partitions_lost/a ->
+        state.handler.(event)
         {:noreply, state}
 
       {:end_offsets, end_offsets} ->

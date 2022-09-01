@@ -6,6 +6,7 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def start_consumer!(opts \\ []) do
+    group_id = Keyword.get(opts, :group_id, "test_group")
     topics = consumer_topics(opts)
 
     test_pid = self()
@@ -15,14 +16,16 @@ defmodule KafkaClient.Test.Helper do
       ExUnit.Callbacks.start_supervised!(
         {KafkaClient.Consumer,
          servers: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end),
-         group_id: Keyword.get(opts, :group_id, "test_group"),
+         group_id: group_id,
          topics: topics,
-         handler: &handle_consumer_event(&1, test_pid)},
+         handler: &handle_consumer_event(&1, test_pid),
+         consumer_params: Keyword.get(opts, :consumer_params, %{})},
         id: child_id,
         restart: :temporary
       )
 
-    assert_receive :consuming, :timer.seconds(10)
+    if group_id != nil,
+      do: assert_receive({:partitions_assigned, _partitions}, :timer.seconds(10))
 
     %{pid: pid, child_id: child_id, topics: topics}
   end
@@ -54,7 +57,10 @@ defmodule KafkaClient.Test.Helper do
     topics
   end
 
-  defp handle_consumer_event(:consuming, test_pid), do: send(test_pid, :consuming)
+  defp handle_consumer_event({event_name, _} = event, test_pid)
+       when event_name in ~w/partitions_assigned partitions_lost/a,
+       do: send(test_pid, event)
+
   defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
 
   defp handle_consumer_event({:polled, topic, partition, offset, _timestamp}, test_pid),
@@ -85,7 +91,7 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def assert_poll(topic, partition, offset) do
-    assert_receive {:polled, ^topic, ^partition, ^offset}, :timer.seconds(1)
+    assert_receive {:polled, ^topic, ^partition, ^offset}, :timer.seconds(10)
   end
 
   def refute_poll(topic, partition, offset) do
@@ -94,7 +100,7 @@ defmodule KafkaClient.Test.Helper do
 
   def assert_processing(topic, partition) do
     assert_receive {:processing, %{topic: ^topic, partition: ^partition} = record},
-                   :timer.seconds(1)
+                   :timer.seconds(10)
 
     record
   end
@@ -103,7 +109,7 @@ defmodule KafkaClient.Test.Helper do
     refute_receive {:processing, %{topic: ^topic, partition: ^partition}}
   end
 
-  def assert_caught_up, do: assert_receive(:caught_up, :timer.seconds(1))
+  def assert_caught_up, do: assert_receive(:caught_up, :timer.seconds(10))
   def refute_caught_up, do: refute_receive(:caught_up, :timer.seconds(1))
 
   def process_next_record!(topic, partition) do

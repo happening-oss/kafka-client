@@ -10,6 +10,7 @@ import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 
@@ -49,7 +50,6 @@ final class KafkaConsumerPoller implements Runnable {
 
   @Override
   public void run() {
-    var isConsuming = false;
     var pausedPartitions = new HashSet<TopicPartition>();
     var bufferUsages = new HashMap<TopicPartition, BufferUsage>();
 
@@ -82,12 +82,6 @@ final class KafkaConsumerPoller implements Runnable {
         consumer.pause(assignedPausedPartitions);
 
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
-
-        if (!isConsuming && !consumer.assignment().isEmpty()) {
-          var message = new OtpErlangAtom("consuming");
-          output.write(message);
-          isConsuming = true;
-        }
 
         for (var record : records) {
           output.write(record);
@@ -138,7 +132,7 @@ final class KafkaConsumerPoller implements Runnable {
           new OtpErlangList(highWatermarks) }));
 
     } else
-      consumer.subscribe(topics);
+      consumer.subscribe(topics, new RebalanceListener(output));
   }
 }
 
@@ -170,5 +164,47 @@ class BufferUsage {
 
   private int numMessages() {
     return messageSizes.size();
+  }
+}
+
+final class RebalanceListener implements ConsumerRebalanceListener {
+  KafkaConsumerOutput output;
+
+  public RebalanceListener(KafkaConsumerOutput output) {
+    this.output = output;
+  }
+
+  public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+
+  }
+
+  public void onPartitionsLost(Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("partitions_lost"),
+        toErlangList(partitions) }));
+  }
+
+  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("partitions_assigned"),
+        toErlangList(partitions) }));
+  }
+
+  private void writeToOutput(OtpErlangObject message) {
+    try {
+      output.write(message);
+    } catch (InterruptedException e) {
+      // Can't rethrow, nor do anything meaningful here, so we'll just swallow it.
+    }
+  }
+
+  static OtpErlangList toErlangList(Collection<TopicPartition> partitions) {
+    return new OtpErlangList(
+        partitions.stream()
+            .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                new OtpErlangBinary(partition.topic().getBytes()),
+                new OtpErlangInt(partition.partition())
+            }))
+            .toArray(OtpErlangTuple[]::new));
   }
 }
