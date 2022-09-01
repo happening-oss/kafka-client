@@ -10,6 +10,7 @@ import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 
@@ -50,11 +51,10 @@ final class KafkaConsumerPoller implements Runnable {
   @Override
   public void run() {
     var pausedPartitions = new HashSet<TopicPartition>();
+    var bufferUsages = new HashMap<TopicPartition, BufferUsage>();
 
     try (var consumer = new KafkaConsumer<String, byte[]>(consumerProps)) {
-      consumer.subscribe(topics);
-
-      var bufferUsages = new HashMap<TopicPartition, BufferUsage>();
+      startConsuming(consumer);
 
       while (true) {
         var assignedPartitions = consumer.assignment();
@@ -81,14 +81,7 @@ final class KafkaConsumerPoller implements Runnable {
         assignedPausedPartitions.retainAll(pausedPartitions);
         consumer.pause(assignedPausedPartitions);
 
-        var isConsuming = !assignedPartitions.isEmpty();
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
-
-        if (!isConsuming && !consumer.assignment().isEmpty()) {
-          var message = new OtpErlangAtom("consuming");
-          output.write(message);
-          isConsuming = true;
-        }
 
         for (var record : records) {
           output.write(record);
@@ -114,6 +107,32 @@ final class KafkaConsumerPoller implements Runnable {
 
   public void ack(TopicPartition topicPartition) {
     acks.add(topicPartition);
+  }
+
+  private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
+    if (consumerProps.getProperty("group.id") == null) {
+      var allPartitions = new ArrayList<TopicPartition>();
+      for (var topic : topics) {
+        for (var partitionInfo : consumer.partitionsFor(topic)) {
+          allPartitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+        }
+      }
+      consumer.assign(allPartitions);
+
+      var highWatermarks = consumer.endOffsets(allPartitions).entrySet().stream()
+          .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
+              new OtpErlangBinary(entry.getKey().topic().getBytes()),
+              new OtpErlangInt(entry.getKey().partition()),
+              new OtpErlangLong(entry.getValue())
+          }))
+          .toArray(OtpErlangTuple[]::new);
+
+      output.write(new OtpErlangTuple(new OtpErlangObject[] {
+          new OtpErlangAtom("end_offsets"),
+          new OtpErlangList(highWatermarks) }));
+
+    } else
+      consumer.subscribe(topics, new RebalanceListener(output));
   }
 }
 
@@ -145,5 +164,47 @@ class BufferUsage {
 
   private int numMessages() {
     return messageSizes.size();
+  }
+}
+
+final class RebalanceListener implements ConsumerRebalanceListener {
+  KafkaConsumerOutput output;
+
+  public RebalanceListener(KafkaConsumerOutput output) {
+    this.output = output;
+  }
+
+  public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+
+  }
+
+  public void onPartitionsLost(Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("partitions_lost"),
+        toErlangList(partitions) }));
+  }
+
+  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("partitions_assigned"),
+        toErlangList(partitions) }));
+  }
+
+  private void writeToOutput(OtpErlangObject message) {
+    try {
+      output.write(message);
+    } catch (InterruptedException e) {
+      // Can't rethrow, nor do anything meaningful here, so we'll just swallow it.
+    }
+  }
+
+  static OtpErlangList toErlangList(Collection<TopicPartition> partitions) {
+    return new OtpErlangList(
+        partitions.stream()
+            .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                new OtpErlangBinary(partition.topic().getBytes()),
+                new OtpErlangInt(partition.partition())
+            }))
+            .toArray(OtpErlangTuple[]::new));
   }
 }

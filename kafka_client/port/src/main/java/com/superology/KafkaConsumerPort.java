@@ -65,13 +65,19 @@ public class KafkaConsumerPort {
 
     for (var param : params.entrySet()) {
       var key = new String(((OtpErlangBinary) param.getKey()).binaryValue());
-      Object value;
+      Object value = param.getValue();
 
-      if (param.getValue() instanceof OtpErlangBinary)
-        value = new String(((OtpErlangBinary) param.getValue()).binaryValue());
-      else if (param.getValue() instanceof OtpErlangLong)
-        value = ((OtpErlangLong) param.getValue()).intValue();
-      else
+      if (value instanceof OtpErlangBinary)
+        value = new String(((OtpErlangBinary) value).binaryValue());
+      else if (value instanceof OtpErlangLong)
+        value = ((OtpErlangLong) value).intValue();
+      else if (value instanceof OtpErlangAtom) {
+        var atomValue = ((OtpErlangAtom) value).atomValue();
+        if (atomValue.equals("true"))
+          value = true;
+        else if (atomValue.equals("false"))
+          value = false;
+      } else
         throw new Exception("unknown type " + param.getValue().getClass().toString());
 
       consumerProps.put(key, value);
