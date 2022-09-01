@@ -11,10 +11,10 @@ defmodule KafkaClient.Consumer.BackpressureTest do
       |> Stream.take(1000)
       |> Enum.at(-1)
 
-    assert_poll(topic1, 0, last_buffered_offset)
+    assert_polled(topic1, 0, last_buffered_offset)
 
     %{offset: first_paused_offset} = produce(topic1, partition: 0)
-    refute_poll(topic1, 0, first_paused_offset)
+    refute_polled(topic1, 0, first_paused_offset)
 
     # check that records on other topic-partitions are still consumed
     produce(topic1, partition: 1)
@@ -25,11 +25,11 @@ defmodule KafkaClient.Consumer.BackpressureTest do
 
     # check that buffer is not unpaused immediately
     Stream.repeatedly(fn -> process_next_record!(topic1, 0) end) |> Enum.take(499)
-    refute_poll(topic1, 0, first_paused_offset)
+    refute_polled(topic1, 0, first_paused_offset)
 
     # check that topic-partition is resumed after one more record is processed
     process_next_record!(topic1, 0)
-    assert_poll(topic1, 0, first_paused_offset)
+    assert_polled(topic1, 0, first_paused_offset)
   end
 
   test "messages size based pause" do
@@ -43,10 +43,10 @@ defmodule KafkaClient.Consumer.BackpressureTest do
       |> Stream.take(5)
       |> Enum.at(-1)
 
-    assert_poll(topic1, 0, last_buffered_offset)
+    assert_polled(topic1, 0, last_buffered_offset)
 
     %{offset: first_paused_offset} = produce(topic1, partition: 0)
-    refute_poll(topic1, 0, first_paused_offset)
+    refute_polled(topic1, 0, first_paused_offset)
 
     # check that records on other topic-partitions are still consumed
     produce(topic1, partition: 1)
@@ -57,11 +57,11 @@ defmodule KafkaClient.Consumer.BackpressureTest do
 
     # check that buffer is not unpaused immediately
     Stream.repeatedly(fn -> process_next_record!(topic1, 0) end) |> Enum.take(2)
-    refute_poll(topic1, 0, first_paused_offset)
+    refute_polled(topic1, 0, first_paused_offset)
 
     # check that topic-partition is resumed after one more record is processed
     process_next_record!(topic1, 0)
-    assert_poll(topic1, 0, first_paused_offset)
+    assert_polled(topic1, 0, first_paused_offset)
   end
 
   test "topic-partition is not paused if the buffer is empty" do
@@ -71,9 +71,9 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     payload = <<0::1_000_000-unit(8)>>
 
     %{offset: offset1} = produce(topic, partition: 0, payload: payload)
-    assert_poll(topic, 0, offset1)
+    assert_polled(topic, 0, offset1)
 
     %{offset: offset2} = produce(topic, partition: 0, payload: payload)
-    assert_poll(topic, 0, offset2)
+    assert_polled(topic, 0, offset2)
   end
 end

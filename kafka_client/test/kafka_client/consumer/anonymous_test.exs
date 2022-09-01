@@ -65,7 +65,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     start_consumer!(group_id: nil, topics: consumer1.topics, recreate_topics?: false)
 
     # wait until all the records are polled
-    Enum.each(produced, &assert_poll(&1.topic, &1.partition, &1.offset))
+    Enum.each(produced, &assert_polled(&1.topic, &1.partition, &1.offset))
 
     # since topics are not empty now, we shouldn't get a caught-up notification yet
     refute_caught_up()
@@ -78,7 +78,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     ]
 
     # wait until all the records are polled
-    Enum.each(produced_after_connect, &assert_poll(&1.topic, &1.partition, &1.offset))
+    Enum.each(produced_after_connect, &assert_polled(&1.topic, &1.partition, &1.offset))
 
     # process almost all previously produced records
     {almost_all_records, [final_record]} = Enum.split(produced, -1)

@@ -58,13 +58,10 @@ defmodule KafkaClient.Test.Helper do
   end
 
   defp handle_consumer_event({event_name, _} = event, test_pid)
-       when event_name in ~w/partitions_assigned partitions_lost/a,
+       when event_name in ~w/partitions_assigned partitions_lost polled/a,
        do: send(test_pid, event)
 
   defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
-
-  defp handle_consumer_event({:polled, topic, partition, offset, _timestamp}, test_pid),
-    do: send(test_pid, {:polled, topic, partition, offset})
 
   defp handle_consumer_event({:record, record}, test_pid) do
     send(test_pid, {:processing, Map.put(record, :pid, self())})
@@ -90,12 +87,12 @@ defmodule KafkaClient.Test.Helper do
     if exit_reason == :normal, do: :ok, else: {:error, exit_reason}
   end
 
-  def assert_poll(topic, partition, offset) do
-    assert_receive {:polled, ^topic, ^partition, ^offset}, :timer.seconds(10)
+  def assert_polled(topic, partition, offset) do
+    assert_receive {:polled, {^topic, ^partition, ^offset, _timestamp}}, :timer.seconds(10)
   end
 
-  def refute_poll(topic, partition, offset) do
-    refute_receive {:polled, ^topic, ^partition, ^offset}, :timer.seconds(1)
+  def refute_polled(topic, partition, offset) do
+    refute_receive {:polled, {^topic, ^partition, ^offset, _timestamp}}, :timer.seconds(1)
   end
 
   def assert_processing(topic, partition) do

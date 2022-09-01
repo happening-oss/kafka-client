@@ -63,7 +63,7 @@ defmodule KafkaClient.Consumer do
         {:noreply, maybe_notify_caught_up(%{state | end_offsets: end_offsets})}
 
       {:record, topic, partition, offset, timestamp, payload} ->
-        state.handler.({:polled, topic, partition, offset, timestamp})
+        state.handler.({:polled, {topic, partition, offset, timestamp}})
 
         state =
           if Parent.child?({:processor, {topic, partition}}) do
