@@ -16,7 +16,11 @@ defmodule KafkaClient.Consumer do
         "max.poll.interval.ms" => 1000,
         "auto.offset.reset" => "earliest"
       }
-      |> Map.merge(if group_id != nil, do: %{"group.id" => group_id}, else: %{})
+      |> Map.merge(
+        if group_id != nil,
+          do: %{"group.id" => group_id},
+          else: %{"enable.auto.commit" => false}
+      )
 
     poll_duration = 10
 
