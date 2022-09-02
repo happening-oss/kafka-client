@@ -1,12 +1,15 @@
 defmodule KafkaClient.Test.Helper do
   import ExUnit.Assertions
 
+  def unique(prefix), do: "#{prefix}_#{System.unique_integer([:positive, :monotonic])}"
+
   def initialize_producer! do
     :ok = :brod.start_client(brokers(), :test_client, auto_start_producers: true)
   end
 
   def start_consumer!(opts \\ []) do
-    group_id = Keyword.get(opts, :group_id, "test_group")
+    group_id = Keyword.get(opts, :group_id, unique("test_group"))
+
     topics = consumer_topics(opts)
 
     test_pid = self()
@@ -19,8 +22,7 @@ defmodule KafkaClient.Test.Helper do
          group_id: group_id,
          topics: topics,
          handler: &handle_consumer_event(&1, test_pid),
-         commit_interval: 50,
-         consumer_params: Keyword.get(opts, :consumer_params, %{})},
+         commit_interval: 50},
         id: child_id,
         restart: :temporary
       )
@@ -39,9 +41,7 @@ defmodule KafkaClient.Test.Helper do
         fn ->
           Enum.map(
             1..Keyword.get(opts, :num_topics, 1)//1,
-            fn _ ->
-              "kafka_client_test_topic_#{System.unique_integer([:positive, :monotonic])}"
-            end
+            fn _ -> unique("kafka_client_test_topic") end
           )
         end
       )
