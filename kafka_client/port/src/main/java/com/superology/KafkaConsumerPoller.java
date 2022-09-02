@@ -12,7 +12,7 @@ final class KafkaConsumerPoller implements Runnable {
   private Collection<String> topics;
   private KafkaConsumerOutput output;
   private Properties pollerProps;
-  private BlockingQueue<OtpErlangTuple> acks = new LinkedBlockingQueue<>();
+  private BlockingQueue<OtpErlangTuple> messages = new LinkedBlockingQueue<>();
 
   public static KafkaConsumerPoller start(
       Properties consumerProps,
@@ -55,7 +55,7 @@ final class KafkaConsumerPoller implements Runnable {
         var assignedPartitions = consumer.assignment();
 
         for (var message : messages()) {
-          if (message.elementAt(0).toString().equals("notify_processed")) {
+          if (message.elementAt(0).toString().equals("ack")) {
             var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
             var partition = ((OtpErlangLong) message.elementAt(2)).intValue();
             var topicPartition = new TopicPartition(topic, partition);
@@ -110,8 +110,8 @@ final class KafkaConsumerPoller implements Runnable {
     }
   }
 
-  public void ack(OtpErlangTuple message) {
-    acks.add(message);
+  public void push(OtpErlangTuple message) {
+    messages.add(message);
   }
 
   private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
@@ -145,9 +145,9 @@ final class KafkaConsumerPoller implements Runnable {
   }
 
   private ArrayList<OtpErlangTuple> messages() {
-    var messages = new ArrayList<OtpErlangTuple>();
-    acks.drainTo(messages);
-    return messages;
+    var drainedMessages = new ArrayList<OtpErlangTuple>();
+    messages.drainTo(drainedMessages);
+    return drainedMessages;
   }
 }
 

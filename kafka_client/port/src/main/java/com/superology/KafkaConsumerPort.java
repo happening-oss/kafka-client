@@ -27,8 +27,8 @@ public class KafkaConsumerPort {
         var message = (OtpErlangTuple) otpDecode(messageBytes);
 
         switch (message.elementAt(0).toString()) {
-          case "notify_processed":
-            poller.ack(message);
+          case "ack":
+            poller.push(message);
             break;
         }
       }

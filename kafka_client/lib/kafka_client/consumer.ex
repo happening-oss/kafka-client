@@ -105,7 +105,7 @@ defmodule KafkaClient.Consumer do
 
     Port.command(
       state.port,
-      :erlang.term_to_binary({:notify_processed, topic, partition, offset})
+      :erlang.term_to_binary({:ack, topic, partition, offset})
     )
 
     state =
