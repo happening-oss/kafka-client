@@ -8,11 +8,14 @@ defmodule KafkaClient.Consumer do
     group_id = Keyword.get(opts, :group_id)
     handler = Keyword.fetch!(opts, :handler)
 
+    poller_properties = %{
+      "poll_duration" => Keyword.get(opts, :poll_duration, 10),
+      "commit_interval" => Keyword.get(opts, :commit_interval, :timer.seconds(5))
+    }
+
     consumer_params =
       %{
         "bootstrap.servers" => Enum.join(servers, ","),
-        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
-        "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer",
         "max.poll.interval.ms" => 1000,
         "auto.offset.reset" => "earliest"
       }
@@ -20,30 +23,31 @@ defmodule KafkaClient.Consumer do
       |> Map.merge(
         if group_id != nil,
           do: %{"group.id" => group_id},
-          else: %{"enable.auto.commit" => false}
+          else: %{}
       )
-
-    poll_duration = 10
+      |> Map.merge(%{
+        "enable.auto.commit" => false,
+        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
+        "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer"
+      })
 
     Parent.GenServer.start_link(
       __MODULE__,
-      {consumer_params, topics, poll_duration, handler}
+      {consumer_params, topics, poller_properties, handler}
     )
   end
 
   @impl GenServer
-  def init({consumer_params, topics, poll_duration, handler}) do
+  def init({consumer_params, topics, poller_properties, handler}) do
     state = %{
-      consumer_params: consumer_params,
-      topics: topics,
-      poll_duration: poll_duration,
       handler: handler,
-      port: open_port(consumer_params, topics, poll_duration),
+      port: nil,
+      port_args: port_args(consumer_params, topics, poller_properties),
       buffers: %{},
       end_offsets: nil
     }
 
-    {:ok, state}
+    {:ok, open_port(state)}
   end
 
   @impl GenServer
@@ -84,11 +88,7 @@ defmodule KafkaClient.Consumer do
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     Logger.error("port exited with status #{status}")
-
-    port = open_port(state.consumer_params, state.topics, state.poll_duration)
-    state = %{state | port: port}
-
-    {:noreply, state}
+    {:noreply, open_port(state)}
   end
 
   def handle_info({:EXIT, port, _reason}, state) when is_port(port),
@@ -101,7 +101,12 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_stopped_child({{:processor, {topic, partition}}, process_info}, state) do
-    Port.command(state.port, :erlang.term_to_binary({:notify_processed, topic, partition}))
+    {offset, _timestamp} = process_info.meta
+
+    Port.command(
+      state.port,
+      :erlang.term_to_binary({:notify_processed, topic, partition, offset})
+    )
 
     state =
       with %{end_offsets: %{} = end_offsets} <- state do
@@ -166,23 +171,30 @@ defmodule KafkaClient.Consumer do
     pid
   end
 
-  defp open_port(consumer_params, topics, poll_interval) do
-    Port.open(
-      {:spawn_executable, System.find_executable("java")},
-      [
-        :nouse_stdio,
-        :binary,
-        :exit_status,
-        packet: 4,
-        args: [
-          "-cp",
-          "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
-          "com.superology.KafkaConsumerPort",
-          consumer_params |> :erlang.term_to_binary() |> Base.encode64(),
-          topics |> :erlang.term_to_binary() |> Base.encode64(),
-          poll_interval |> :erlang.term_to_binary() |> Base.encode64()
+  defp open_port(state) do
+    port =
+      Port.open(
+        {:spawn_executable, System.find_executable("java")},
+        [
+          :nouse_stdio,
+          :binary,
+          :exit_status,
+          packet: 4,
+          args: state.port_args
         ]
-      ]
-    )
+      )
+
+    %{state | port: port}
+  end
+
+  defp port_args(consumer_params, topics, poller_properties) do
+    [
+      "-cp",
+      "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
+      "com.superology.KafkaConsumerPort",
+      consumer_params |> :erlang.term_to_binary() |> Base.encode64(),
+      topics |> :erlang.term_to_binary() |> Base.encode64(),
+      poller_properties |> :erlang.term_to_binary() |> Base.encode64()
+    ]
   end
 end

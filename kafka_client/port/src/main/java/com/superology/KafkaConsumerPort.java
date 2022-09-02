@@ -8,8 +8,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Properties;
 
-import org.apache.kafka.common.TopicPartition;
-
 import com.ericsson.otp.erlang.*;
 
 public class KafkaConsumerPort {
@@ -19,9 +17,9 @@ public class KafkaConsumerPort {
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
       var consumerProps = decodeProperties(args[0]);
       var topics = decodeTopics(args[1]);
+      var pollerProps = decodeProperties(args[2]);
       var output = KafkaConsumerOutput.start();
-      var pollInterval = ((OtpErlangLong) otpDecode(java.util.Base64.getDecoder().decode(args[2]))).longValue();
-      var poller = KafkaConsumerPoller.start(consumerProps, topics, pollInterval, output);
+      var poller = KafkaConsumerPoller.start(consumerProps, topics, pollerProps, output);
 
       while (true) {
         var length = readInt(input);
@@ -30,9 +28,8 @@ public class KafkaConsumerPort {
 
         switch (message.elementAt(0).toString()) {
           case "notify_processed":
-            var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
-            var partition = ((OtpErlangLong) message.elementAt(2)).intValue();
-            poller.ack(new TopicPartition(topic, partition));
+            poller.ack(message);
+            break;
         }
       }
     } catch (java.io.EOFException e) {

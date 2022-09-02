@@ -1,34 +1,25 @@
 package com.superology;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.Properties;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-
-import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
-
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
 final class KafkaConsumerPoller implements Runnable {
   private Properties consumerProps;
   private Collection<String> topics;
   private KafkaConsumerOutput output;
-  private long pollInterval;
-  private BlockingQueue<TopicPartition> acks = new LinkedBlockingQueue<>();
+  private Properties pollerProps;
+  private BlockingQueue<OtpErlangTuple> acks = new LinkedBlockingQueue<>();
 
   public static KafkaConsumerPoller start(
       Properties consumerProps,
       Collection<String> topics,
-      long pollInterval,
+      Properties pollerProps,
       KafkaConsumerOutput output) {
-    var poller = new KafkaConsumerPoller(consumerProps, topics, pollInterval, output);
+    var poller = new KafkaConsumerPoller(consumerProps, topics, pollerProps, output);
 
     var consumerThread = new Thread(poller);
     consumerThread.setDaemon(true);
@@ -40,12 +31,12 @@ final class KafkaConsumerPoller implements Runnable {
   private KafkaConsumerPoller(
       Properties consumerProps,
       Collection<String> topics,
-      long pollInterval,
+      Properties pollerProps,
       KafkaConsumerOutput output) {
     this.consumerProps = consumerProps;
     this.topics = topics;
     this.output = output;
-    this.pollInterval = pollInterval;
+    this.pollerProps = pollerProps;
   }
 
   @Override
@@ -56,22 +47,33 @@ final class KafkaConsumerPoller implements Runnable {
     try (var consumer = new KafkaConsumer<String, byte[]>(consumerProps)) {
       startConsuming(consumer);
 
+      var pollInterval = (int) pollerProps.getOrDefault("poll_interval", 10);
+      var commitInterval = (int) pollerProps.getOrDefault("commmit_interval", 5000);
+      var commits = new Commits(consumer, commitInterval);
+
       while (true) {
         var assignedPartitions = consumer.assignment();
 
-        var pendingAcks = new ArrayList<TopicPartition>();
-        acks.drainTo(pendingAcks);
+        for (var message : messages()) {
+          if (message.elementAt(0).toString().equals("notify_processed")) {
+            var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
+            var partition = ((OtpErlangLong) message.elementAt(2)).intValue();
+            var topicPartition = new TopicPartition(topic, partition);
+            var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
 
-        for (var topicPartition : pendingAcks) {
-          var bufferUsage = bufferUsages.get(topicPartition);
-          if (bufferUsage != null) {
-            bufferUsage.recordProcessed();
+            if (!isAnonymous())
+              commits.add(topicPartition, offset);
 
-            if (bufferUsage.shouldResume()) {
-              pausedPartitions.remove(topicPartition);
+            var bufferUsage = bufferUsages.get(topicPartition);
+            if (bufferUsage != null) {
+              bufferUsage.recordProcessed();
 
-              if (assignedPartitions.contains(topicPartition))
-                consumer.resume(Arrays.asList(new TopicPartition[] { topicPartition }));
+              if (bufferUsage.shouldResume()) {
+                pausedPartitions.remove(topicPartition);
+
+                if (assignedPartitions.contains(topicPartition))
+                  consumer.resume(Arrays.asList(new TopicPartition[] { topicPartition }));
+              }
             }
           }
         }
@@ -80,6 +82,9 @@ final class KafkaConsumerPoller implements Runnable {
         assignedPausedPartitions.addAll(assignedPartitions);
         assignedPausedPartitions.retainAll(pausedPartitions);
         consumer.pause(assignedPausedPartitions);
+
+        if (!isAnonymous())
+          commits.flush(assignedPartitions);
 
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
@@ -105,12 +110,12 @@ final class KafkaConsumerPoller implements Runnable {
     }
   }
 
-  public void ack(TopicPartition topicPartition) {
-    acks.add(topicPartition);
+  public void ack(OtpErlangTuple message) {
+    acks.add(message);
   }
 
   private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
-    if (consumerProps.getProperty("group.id") == null) {
+    if (isAnonymous()) {
       var allPartitions = new ArrayList<TopicPartition>();
       for (var topic : topics) {
         for (var partitionInfo : consumer.partitionsFor(topic)) {
@@ -133,6 +138,16 @@ final class KafkaConsumerPoller implements Runnable {
 
     } else
       consumer.subscribe(topics, new RebalanceListener(output));
+  }
+
+  private boolean isAnonymous() {
+    return consumerProps.getProperty("group.id") == null;
+  }
+
+  private ArrayList<OtpErlangTuple> messages() {
+    var messages = new ArrayList<OtpErlangTuple>();
+    acks.drainTo(messages);
+    return messages;
   }
 }
 
@@ -167,6 +182,34 @@ class BufferUsage {
   }
 }
 
+final class Commits {
+  HashMap<TopicPartition, OffsetAndMetadata> pendingCommits = new HashMap<TopicPartition, OffsetAndMetadata>();
+  Long lastCommit = null;
+  KafkaConsumer<String, byte[]> consumer;
+  long commitIntervalNs;
+
+  public Commits(KafkaConsumer<String, byte[]> consumer, long commitIntervalMs) {
+    this.consumer = consumer;
+    this.commitIntervalNs = Duration.ofMillis(commitIntervalMs).toNanos();
+  }
+
+  public void add(TopicPartition topicPartition, long offset) {
+    pendingCommits.put(topicPartition, new OffsetAndMetadata(offset + 1));
+  }
+
+  public void flush(Set<TopicPartition> assignedPartitions) {
+    var now = System.nanoTime();
+    if (lastCommit == null || now - lastCommit >= commitIntervalNs) {
+      pendingCommits.keySet().retainAll(assignedPartitions);
+      if (!pendingCommits.isEmpty()) {
+        consumer.commitAsync(pendingCommits, null);
+        pendingCommits.clear();
+        lastCommit = now;
+      }
+    }
+  }
+}
+
 final class RebalanceListener implements ConsumerRebalanceListener {
   KafkaConsumerOutput output;
 
@@ -175,7 +218,6 @@ final class RebalanceListener implements ConsumerRebalanceListener {
   }
 
   public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
-
   }
 
   public void onPartitionsLost(Collection<TopicPartition> partitions) {
