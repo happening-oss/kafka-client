@@ -34,8 +34,8 @@ KafkaClient.Consumer.start_link(
   group_id: "test_group",
   topics: [topic],
   handler: fn
-    :consuming -> send(bench_pid, :consuming)
-    {:polled, _topic, _partition, _offset, _timestamp} -> :ok
+    {:partitions_assigned, _partitions} -> send(bench_pid, :consuming)
+    {:polled, {_topic, _partition, _offset, _timestamp}} -> :ok
     {:record, _record} -> send(bench_pid, :message_processing)
   end
 )
