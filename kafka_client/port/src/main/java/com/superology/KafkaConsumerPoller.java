@@ -7,7 +7,8 @@ import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
-final class KafkaConsumerPoller implements Runnable {
+final class KafkaConsumerPoller
+    implements Runnable, ConsumerRebalanceListener {
   private Properties consumerProps;
   private Collection<String> topics;
   private KafkaConsumerOutput output;
@@ -89,7 +90,7 @@ final class KafkaConsumerPoller implements Runnable {
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
         for (var record : records) {
-          output.write(record);
+          writeToOutput(record);
 
           var topicPartition = new TopicPartition(record.topic(), record.partition());
           var bufferUsage = bufferUsages.get(topicPartition);
@@ -137,7 +138,7 @@ final class KafkaConsumerPoller implements Runnable {
           new OtpErlangList(highWatermarks) }));
 
     } else
-      consumer.subscribe(topics, new RebalanceListener(output));
+      consumer.subscribe(topics, this);
   }
 
   private boolean isAnonymous() {
@@ -148,6 +149,42 @@ final class KafkaConsumerPoller implements Runnable {
     var drainedMessages = new ArrayList<OtpErlangTuple>();
     messages.drainTo(drainedMessages);
     return drainedMessages;
+  }
+
+  @Override
+  public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+  }
+
+  @Override
+  public void onPartitionsLost(Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("partitions_lost"),
+        toErlangList(partitions) }));
+  }
+
+  @Override
+  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("partitions_assigned"),
+        toErlangList(partitions) }));
+  }
+
+  private void writeToOutput(Object message) {
+    try {
+      output.write(message);
+    } catch (InterruptedException e) {
+      throw new org.apache.kafka.common.errors.InterruptException(e);
+    }
+  }
+
+  static private OtpErlangList toErlangList(Collection<TopicPartition> partitions) {
+    return new OtpErlangList(
+        partitions.stream()
+            .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                new OtpErlangBinary(partition.topic().getBytes()),
+                new OtpErlangInt(partition.partition())
+            }))
+            .toArray(OtpErlangTuple[]::new));
   }
 }
 
@@ -207,46 +244,5 @@ final class Commits {
         lastCommit = now;
       }
     }
-  }
-}
-
-final class RebalanceListener implements ConsumerRebalanceListener {
-  KafkaConsumerOutput output;
-
-  public RebalanceListener(KafkaConsumerOutput output) {
-    this.output = output;
-  }
-
-  public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
-  }
-
-  public void onPartitionsLost(Collection<TopicPartition> partitions) {
-    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom("partitions_lost"),
-        toErlangList(partitions) }));
-  }
-
-  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
-    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom("partitions_assigned"),
-        toErlangList(partitions) }));
-  }
-
-  private void writeToOutput(OtpErlangObject message) {
-    try {
-      output.write(message);
-    } catch (InterruptedException e) {
-      // Can't rethrow, nor do anything meaningful here, so we'll just swallow it.
-    }
-  }
-
-  static OtpErlangList toErlangList(Collection<TopicPartition> partitions) {
-    return new OtpErlangList(
-        partitions.stream()
-            .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
-                new OtpErlangBinary(partition.topic().getBytes()),
-                new OtpErlangInt(partition.partition())
-            }))
-            .toArray(OtpErlangTuple[]::new));
   }
 }
