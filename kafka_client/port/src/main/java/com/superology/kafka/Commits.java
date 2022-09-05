@@ -1,5 +1,6 @@
 package com.superology.kafka;
 
+import java.time.Duration;
 import java.util.*;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
@@ -20,12 +21,16 @@ final class Commits {
     pendingCommits.put(partition, new OffsetAndMetadata(offset + 1));
   }
 
-  public void flush() {
+  public void flush(boolean sync) {
     var now = System.nanoTime();
     if (now - lastCommit >= commitIntervalNs) {
       pendingCommits.keySet().retainAll(consumer.assignment());
       if (!pendingCommits.isEmpty()) {
-        consumer.commitAsync(pendingCommits, null);
+        if (sync)
+          consumer.commitSync(pendingCommits);
+        else
+          consumer.commitAsync(pendingCommits, null);
+
         pendingCommits.clear();
         lastCommit = now;
       }
@@ -40,7 +45,10 @@ final class Commits {
         commits.put(partition, offset);
     }
 
-    consumer.commitAsync(commits, null);
+    try {
+      consumer.commitSync(commits, Duration.ofMillis(500));
+    } catch (Exception e) {
+    }
   }
 
   public void partitionsLost(Collection<TopicPartition> partitions) {

@@ -95,11 +95,23 @@ defmodule KafkaClient.Consumer do
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     Logger.error("port exited with status #{status}")
-    {:noreply, open_port(state)}
+    Parent.shutdown_all()
+    {:noreply, open_port(%{state | buffers: %{}})}
   end
 
   def handle_info({:EXIT, port, _reason}, state) when is_port(port),
     do: {:noreply, state}
+
+  @impl GenServer
+  def terminate(_reason, %{port: port}) do
+    Port.command(port, :erlang.term_to_binary({:stop}))
+
+    receive do
+      {^port, {:exit_status, _status}} -> :ok
+    after
+      :timer.seconds(5) -> :ok
+    end
+  end
 
   @impl Parent.GenServer
   def handle_stopped_children(children, state) do

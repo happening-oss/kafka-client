@@ -12,7 +12,7 @@ final class ConsumerPoller
   private Collection<String> topics;
   private ConsumerOutput output;
   private Properties pollerProps;
-  private BlockingQueue<Ack> acks = new LinkedBlockingQueue<>();
+  private BlockingQueue<Object> messages = new LinkedBlockingQueue<>();
   private Commits commits;
   private Backpressure backpressure;
 
@@ -52,15 +52,24 @@ final class ConsumerPoller
       backpressure = new Backpressure(consumer);
 
       while (true) {
-        for (var ack : acks()) {
-          backpressure.recordProcessed(ack.partition());
-          if (!isAnonymous())
-            commits.add(ack.partition(), ack.offset());
+        for (var message : messages()) {
+          if (message instanceof Ack) {
+            var ack = (Ack) message;
+            backpressure.recordProcessed(ack.partition());
+            if (!isAnonymous())
+              commits.add(ack.partition(), ack.offset());
+          } else if (message.equals("stop")) {
+            if (!isAnonymous())
+              commits.flush(true);
+
+            consumer.close();
+            System.exit(0);
+          }
         }
 
         backpressure.flush();
         if (!isAnonymous())
-          commits.flush();
+          commits.flush(false);
 
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
@@ -79,8 +88,8 @@ final class ConsumerPoller
     }
   }
 
-  public void ack(Ack ack) {
-    acks.add(ack);
+  public void addMessage(Object message) {
+    messages.add(message);
   }
 
   private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
@@ -113,9 +122,9 @@ final class ConsumerPoller
     return consumerProps.getProperty("group.id") == null;
   }
 
-  private List<Ack> acks() {
-    var result = new ArrayList<Ack>();
-    acks.drainTo(result);
+  private List<Object> messages() {
+    var result = new ArrayList<Object>();
+    messages.drainTo(result);
     return result;
   }
 

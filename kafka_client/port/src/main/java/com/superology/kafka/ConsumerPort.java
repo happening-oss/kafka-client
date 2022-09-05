@@ -23,7 +23,11 @@ public class ConsumerPort {
 
         switch (message.elementAt(0).toString()) {
           case "ack":
-            poller.ack(decodeAck(message));
+            poller.addMessage(decodeAck(message));
+            break;
+
+          case "stop":
+            poller.addMessage("stop");
             break;
         }
       }
