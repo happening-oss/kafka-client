@@ -51,6 +51,11 @@ final class Backpressure {
     consumer.resume(resumedPartitions);
     resumedPartitions.clear();
   }
+
+  public void partitionsLost(Collection<TopicPartition> partitions) {
+    pausedPartitions.removeAll(partitions);
+    resumedPartitions.removeAll(partitions);
+  }
 }
 
 final class BufferUsage {

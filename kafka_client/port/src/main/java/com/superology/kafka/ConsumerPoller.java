@@ -13,6 +13,8 @@ final class ConsumerPoller
   private ConsumerOutput output;
   private Properties pollerProps;
   private BlockingQueue<Ack> acks = new LinkedBlockingQueue<>();
+  private Commits commits;
+  private Backpressure backpressure;
 
   public static ConsumerPoller start(
       Properties consumerProps,
@@ -46,8 +48,8 @@ final class ConsumerPoller
 
       var pollInterval = (int) pollerProps.getOrDefault("poll_interval", 10);
       var commitInterval = (int) pollerProps.getOrDefault("commmit_interval", 5000);
-      var commits = new Commits(consumer, commitInterval);
-      var backpressure = new Backpressure(consumer);
+      commits = new Commits(consumer, commitInterval);
+      backpressure = new Backpressure(consumer);
 
       while (true) {
         for (var ack : acks()) {
@@ -118,18 +120,22 @@ final class ConsumerPoller
   }
 
   @Override
+  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+    emitRebalanceEvent("assigned", partitions);
+  }
+
+  @Override
   public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+    backpressure.partitionsLost(partitions);
+    commits.partitionsRevoked(partitions);
     emitRebalanceEvent("unassigned", partitions);
   }
 
   @Override
   public void onPartitionsLost(Collection<TopicPartition> partitions) {
+    backpressure.partitionsLost(partitions);
+    commits.partitionsLost(partitions);
     emitRebalanceEvent("unassigned", partitions);
-  }
-
-  @Override
-  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
-    emitRebalanceEvent("assigned", partitions);
   }
 
   private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {

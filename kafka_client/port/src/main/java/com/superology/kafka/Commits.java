@@ -31,4 +31,19 @@ final class Commits {
       }
     }
   }
+
+  public void partitionsRevoked(Collection<TopicPartition> partitions) {
+    HashMap<TopicPartition, OffsetAndMetadata> commits = new HashMap<TopicPartition, OffsetAndMetadata>();
+    for (var partition : partitions) {
+      var offset = pendingCommits.remove(partition);
+      if (offset != null)
+        commits.put(partition, offset);
+    }
+
+    consumer.commitAsync(commits, null);
+  }
+
+  public void partitionsLost(Collection<TopicPartition> partitions) {
+    pendingCommits.keySet().removeAll(partitions);
+  }
 }

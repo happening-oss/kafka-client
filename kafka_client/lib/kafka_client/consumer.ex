@@ -53,7 +53,14 @@ defmodule KafkaClient.Consumer do
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     case :erlang.binary_to_term(data) do
-      {event_name, _} = event when event_name in ~w/assigned unassigned/a ->
+      {:unassigned, partitions} = event ->
+        Enum.each(partitions, &Parent.shutdown_child({:processor, &1}))
+        buffers = Enum.reduce(partitions, state.buffers, &Map.delete(&2, &1))
+        state = %{state | buffers: buffers}
+        state.handler.(event)
+        {:noreply, state}
+
+      {:assigned, _partitions} = event ->
         state.handler.(event)
         {:noreply, state}
 
