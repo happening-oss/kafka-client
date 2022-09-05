@@ -2,6 +2,7 @@ package com.superology.kafka;
 
 import java.io.*;
 import java.util.*;
+import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
 public class ConsumerPort {
@@ -22,7 +23,7 @@ public class ConsumerPort {
 
         switch (message.elementAt(0).toString()) {
           case "ack":
-            poller.push(message);
+            poller.ack(decodeAck(message));
             break;
         }
       }
@@ -83,6 +84,14 @@ public class ConsumerPort {
     for (var topic : (OtpErlangList) otpDecode(topicBytes))
       topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
     return topics;
+  }
+
+  private static Ack decodeAck(OtpErlangTuple message) throws OtpErlangRangeException {
+    var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
+    var partitionNo = ((OtpErlangLong) message.elementAt(2)).intValue();
+    var partition = new TopicPartition(topic, partitionNo);
+    var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
+    return new Ack(partition, offset);
   }
 
   private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {

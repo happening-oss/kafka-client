@@ -12,7 +12,7 @@ final class ConsumerPoller
   private Collection<String> topics;
   private ConsumerOutput output;
   private Properties pollerProps;
-  private BlockingQueue<OtpErlangTuple> messages = new LinkedBlockingQueue<>();
+  private BlockingQueue<Ack> acks = new LinkedBlockingQueue<>();
 
   public static ConsumerPoller start(
       Properties consumerProps,
@@ -50,24 +50,15 @@ final class ConsumerPoller
       var backpressure = new Backpressure(consumer);
 
       while (true) {
-        for (var message : messages()) {
-          if (message.elementAt(0).toString().equals("ack")) {
-            var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
-            var partitionNo = ((OtpErlangLong) message.elementAt(2)).intValue();
-            var partition = new TopicPartition(topic, partitionNo);
-            var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
-
-            if (!isAnonymous())
-              commits.add(partition, offset);
-
-            backpressure.recordProcessed(partition);
-          }
+        for (var ack : acks()) {
+          backpressure.recordProcessed(ack.partition());
+          if (!isAnonymous())
+            commits.add(ack.partition(), ack.offset());
         }
 
+        backpressure.flush();
         if (!isAnonymous())
           commits.flush();
-
-        backpressure.flush();
 
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
@@ -86,8 +77,8 @@ final class ConsumerPoller
     }
   }
 
-  public void push(OtpErlangTuple message) {
-    messages.add(message);
+  public void ack(Ack ack) {
+    acks.add(ack);
   }
 
   private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
@@ -120,10 +111,10 @@ final class ConsumerPoller
     return consumerProps.getProperty("group.id") == null;
   }
 
-  private ArrayList<OtpErlangTuple> messages() {
-    var drainedMessages = new ArrayList<OtpErlangTuple>();
-    messages.drainTo(drainedMessages);
-    return drainedMessages;
+  private List<Ack> acks() {
+    var result = new ArrayList<Ack>();
+    acks.drainTo(result);
+    return result;
   }
 
   @Override
@@ -161,4 +152,7 @@ final class ConsumerPoller
             }))
             .toArray(OtpErlangTuple[]::new));
   }
+}
+
+record Ack(TopicPartition partition, long offset) {
 }
