@@ -16,6 +16,7 @@ defmodule KafkaClient.Consumer do
     consumer_params =
       %{
         "bootstrap.servers" => Enum.join(servers, ","),
+        "heartbeat.interval.ms" => 100,
         "max.poll.interval.ms" => 1000,
         "auto.offset.reset" => "earliest"
       }

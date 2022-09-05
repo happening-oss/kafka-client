@@ -22,7 +22,8 @@ defmodule KafkaClient.Test.Helper do
          group_id: group_id,
          topics: topics,
          handler: &handle_consumer_event(&1, test_pid),
-         commit_interval: 50},
+         commit_interval: 50,
+         consumer_params: Keyword.get(opts, :consumer_params, %{})},
         id: child_id,
         restart: :temporary
       )
