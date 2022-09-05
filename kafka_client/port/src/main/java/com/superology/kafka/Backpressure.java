@@ -14,28 +14,28 @@ final class Backpressure {
     this.consumer = consumer;
   }
 
-  public void recordProcessing(TopicPartition topicPartition, int bytes) {
-    var bufferUsage = bufferUsages.get(topicPartition);
+  public void recordProcessing(TopicPartition partition, int bytes) {
+    var bufferUsage = bufferUsages.get(partition);
     if (bufferUsage == null) {
       bufferUsage = new BufferUsage();
-      bufferUsages.put(topicPartition, bufferUsage);
+      bufferUsages.put(partition, bufferUsage);
     }
 
     bufferUsage.recordProcessing(bytes);
     if (bufferUsage.shouldPause()) {
-      pausedPartitions.add(topicPartition);
-      resumedPartitions.remove(topicPartition);
+      pausedPartitions.add(partition);
+      resumedPartitions.remove(partition);
     }
   }
 
-  public void recordProcessed(TopicPartition topicPartition) {
-    var bufferUsage = bufferUsages.get(topicPartition);
+  public void recordProcessed(TopicPartition partition) {
+    var bufferUsage = bufferUsages.get(partition);
     if (bufferUsage != null) {
       bufferUsage.recordProcessed();
 
       if (bufferUsage.shouldResume()) {
-        pausedPartitions.remove(topicPartition);
-        resumedPartitions.add(topicPartition);
+        pausedPartitions.remove(partition);
+        resumedPartitions.add(partition);
       }
     }
   }

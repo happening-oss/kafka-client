@@ -16,8 +16,8 @@ final class Commits {
     this.lastCommit = System.nanoTime() - commitIntervalNs;
   }
 
-  public void add(TopicPartition topicPartition, long offset) {
-    pendingCommits.put(topicPartition, new OffsetAndMetadata(offset + 1));
+  public void add(TopicPartition partition, long offset) {
+    pendingCommits.put(partition, new OffsetAndMetadata(offset + 1));
   }
 
   public void flush() {

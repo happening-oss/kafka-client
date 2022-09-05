@@ -53,14 +53,14 @@ final class ConsumerPoller
         for (var message : messages()) {
           if (message.elementAt(0).toString().equals("ack")) {
             var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
-            var partition = ((OtpErlangLong) message.elementAt(2)).intValue();
-            var topicPartition = new TopicPartition(topic, partition);
+            var partitionNo = ((OtpErlangLong) message.elementAt(2)).intValue();
+            var partition = new TopicPartition(topic, partitionNo);
             var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
 
             if (!isAnonymous())
-              commits.add(topicPartition, offset);
+              commits.add(partition, offset);
 
-            backpressure.recordProcessed(topicPartition);
+            backpressure.recordProcessed(partition);
           }
         }
 
