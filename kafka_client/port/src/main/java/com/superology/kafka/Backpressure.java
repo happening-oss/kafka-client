@@ -1,7 +1,6 @@
-package com.superology;
+package com.superology.kafka;
 
 import java.util.*;
-
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 

@@ -1,18 +1,13 @@
-package com.superology;
+package com.superology.kafka;
 
-import java.io.DataOutputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-
+import java.io.*;
+import java.util.concurrent.*;
 import com.ericsson.otp.erlang.*;
+import org.apache.kafka.clients.consumer.*;
 
-final class KafkaConsumerOutput implements Runnable {
-  public static KafkaConsumerOutput start() {
-    var output = new KafkaConsumerOutput();
+final class ConsumerOutput implements Runnable {
+  public static ConsumerOutput start() {
+    var output = new ConsumerOutput();
 
     var consumerThread = new Thread(output);
     consumerThread.setDaemon(true);
@@ -23,7 +18,7 @@ final class KafkaConsumerOutput implements Runnable {
 
   private BlockingQueue<Object> outputs;
 
-  private KafkaConsumerOutput() {
+  private ConsumerOutput() {
     this.outputs = new LinkedBlockingQueue<Object>();
   }
 

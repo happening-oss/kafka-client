@@ -1,4 +1,4 @@
-package com.superology;
+package com.superology.kafka;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -6,20 +6,20 @@ import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
-final class KafkaConsumerPoller
+final class ConsumerPoller
     implements Runnable, ConsumerRebalanceListener {
   private Properties consumerProps;
   private Collection<String> topics;
-  private KafkaConsumerOutput output;
+  private ConsumerOutput output;
   private Properties pollerProps;
   private BlockingQueue<OtpErlangTuple> messages = new LinkedBlockingQueue<>();
 
-  public static KafkaConsumerPoller start(
+  public static ConsumerPoller start(
       Properties consumerProps,
       Collection<String> topics,
       Properties pollerProps,
-      KafkaConsumerOutput output) {
-    var poller = new KafkaConsumerPoller(consumerProps, topics, pollerProps, output);
+      ConsumerOutput output) {
+    var poller = new ConsumerPoller(consumerProps, topics, pollerProps, output);
 
     var consumerThread = new Thread(poller);
     consumerThread.setDaemon(true);
@@ -28,11 +28,11 @@ final class KafkaConsumerPoller
     return poller;
   }
 
-  private KafkaConsumerPoller(
+  private ConsumerPoller(
       Properties consumerProps,
       Collection<String> topics,
       Properties pollerProps,
-      KafkaConsumerOutput output) {
+      ConsumerOutput output) {
     this.consumerProps = consumerProps;
     this.topics = topics;
     this.output = output;

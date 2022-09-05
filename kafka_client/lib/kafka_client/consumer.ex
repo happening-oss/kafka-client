@@ -191,7 +191,7 @@ defmodule KafkaClient.Consumer do
     [
       "-cp",
       "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
-      "com.superology.KafkaConsumerPort",
+      "com.superology.kafka.ConsumerPort",
       consumer_params |> :erlang.term_to_binary() |> Base.encode64(),
       topics |> :erlang.term_to_binary() |> Base.encode64(),
       poller_properties |> :erlang.term_to_binary() |> Base.encode64()

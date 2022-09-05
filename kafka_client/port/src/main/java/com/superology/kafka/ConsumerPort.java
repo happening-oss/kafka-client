@@ -1,16 +1,10 @@
-package com.superology;
+package com.superology.kafka;
 
-import java.io.DataInputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Properties;
-
+import java.io.*;
+import java.util.*;
 import com.ericsson.otp.erlang.*;
 
-public class KafkaConsumerPort {
+public class ConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
@@ -18,8 +12,8 @@ public class KafkaConsumerPort {
       var consumerProps = decodeProperties(args[0]);
       var topics = decodeTopics(args[1]);
       var pollerProps = decodeProperties(args[2]);
-      var output = KafkaConsumerOutput.start();
-      var poller = KafkaConsumerPoller.start(consumerProps, topics, pollerProps, output);
+      var output = ConsumerOutput.start();
+      var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, output);
 
       while (true) {
         var length = readInt(input);
