@@ -3,7 +3,6 @@ package com.superology.kafka;
 import java.io.*;
 import java.util.concurrent.*;
 import com.ericsson.otp.erlang.*;
-import org.apache.kafka.clients.consumer.*;
 
 final class ConsumerOutput implements Runnable {
   public static ConsumerOutput start() {
@@ -33,23 +32,7 @@ final class ConsumerOutput implements Runnable {
 
       while (true) {
         var message = this.outputs.take();
-
-        if (message instanceof ConsumerRecord) {
-          @SuppressWarnings("unchecked")
-          var record = (ConsumerRecord<String, byte[]>) message;
-          var encodedMessage = new OtpErlangTuple(new OtpErlangObject[] {
-              new OtpErlangAtom("record"),
-              new OtpErlangBinary(record.topic().getBytes()),
-              new OtpErlangInt(record.partition()),
-              new OtpErlangLong(record.offset()),
-              new OtpErlangLong(record.timestamp()),
-              new OtpErlangBinary(record.value())
-          });
-
-          write(output, encodedMessage);
-        } else if (message instanceof OtpErlangObject) {
-          write(output, (OtpErlangObject) message);
-        }
+        write(output, (OtpErlangObject) message);
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());

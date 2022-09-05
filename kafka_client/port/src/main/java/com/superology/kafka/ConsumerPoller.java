@@ -63,7 +63,7 @@ final class ConsumerPoller
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
         for (var record : records) {
-          writeToOutput(record);
+          writeToOutput(toOtp(record));
 
           backpressure.recordProcessing(
               new TopicPartition(record.topic(), record.partition()),
@@ -151,6 +151,17 @@ final class ConsumerPoller
                 new OtpErlangInt(partition.partition())
             }))
             .toArray(OtpErlangTuple[]::new));
+  }
+
+  static private OtpErlangTuple toOtp(ConsumerRecord<String, byte[]> record) {
+    return new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("record"),
+        new OtpErlangBinary(record.topic().getBytes()),
+        new OtpErlangInt(record.partition()),
+        new OtpErlangLong(record.offset()),
+        new OtpErlangLong(record.timestamp()),
+        new OtpErlangBinary(record.value())
+    });
   }
 }
 
