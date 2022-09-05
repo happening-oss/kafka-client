@@ -52,4 +52,34 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     produce(topic, partition: 0)
     process_next_record!(topic, 0)
   end
+
+  test "processed messages are committed" do
+    consumer = start_consumer!()
+    [topic] = consumer.topics
+
+    produce(topic, partition: 0)
+    produce(topic, partition: 0)
+    produce(topic, partition: 0)
+
+    produce(topic, partition: 1)
+    produce(topic, partition: 1)
+    produce(topic, partition: 1)
+    produce(topic, partition: 1)
+    produce(topic, partition: 1)
+
+    last_processed_record_partition_0 = process_next_record!(topic, 0)
+
+    process_next_record!(topic, 1)
+    last_processed_record_partition_1 = process_next_record!(topic, 1)
+
+    # wait a bit to ensure that the processed records are committed
+    Process.sleep(200)
+    Port.command(port(consumer), :erlang.term_to_binary({:committed_offsets}))
+    assert_receive {:committed, offsets}
+
+    assert Enum.sort(offsets) == [
+             {topic, 0, last_processed_record_partition_0.offset + 1},
+             {topic, 1, last_processed_record_partition_1.offset + 1}
+           ]
+  end
 end

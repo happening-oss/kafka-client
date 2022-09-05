@@ -29,6 +29,10 @@ public class ConsumerPort {
           case "stop":
             poller.addMessage("stop");
             break;
+
+          case "committed_offsets":
+            poller.addMessage("committed_offsets");
+            break;
         }
       }
     } catch (java.io.EOFException e) {

@@ -65,6 +65,10 @@ defmodule KafkaClient.Consumer do
         state.handler.(event)
         {:noreply, state}
 
+      {:committed, _offsets} = event ->
+        state.handler.(event)
+        {:noreply, state}
+
       {:end_offsets, end_offsets} ->
         end_offsets =
           for {topic, partition, offset} <- end_offsets,

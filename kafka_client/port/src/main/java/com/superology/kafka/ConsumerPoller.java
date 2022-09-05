@@ -64,6 +64,19 @@ final class ConsumerPoller
 
             consumer.close();
             System.exit(0);
+          } else if (message.equals("committed_offsets")) {
+            var committed = consumer.committed(consumer.assignment()).entrySet().stream()
+                .filter(entry -> entry.getValue() != null)
+                .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
+                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
+                    new OtpErlangInt(entry.getKey().partition()),
+                    new OtpErlangLong(entry.getValue().offset())
+                }))
+                .toArray(OtpErlangTuple[]::new);
+
+            output.write(new OtpErlangTuple(new OtpErlangObject[] {
+                new OtpErlangAtom("committed"),
+                new OtpErlangList(committed) }));
           }
         }
 
@@ -182,4 +195,7 @@ final class ConsumerPoller
 }
 
 record Ack(TopicPartition partition, long offset) {
+}
+
+record CommittedRequest(TopicPartition partition) {
 }

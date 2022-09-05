@@ -60,7 +60,7 @@ defmodule KafkaClient.Test.Helper do
   end
 
   defp handle_consumer_event({event_name, _} = event, test_pid)
-       when event_name in ~w/assigned unassigned polled/a,
+       when event_name in ~w/assigned unassigned polled committed/a,
        do: send(test_pid, event)
 
   defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
@@ -112,9 +112,9 @@ defmodule KafkaClient.Test.Helper do
   def refute_caught_up, do: refute_receive(:caught_up, :timer.seconds(1))
 
   def process_next_record!(topic, partition) do
-    topic
-    |> assert_processing(partition)
-    |> resume_processing()
+    record = assert_processing(topic, partition)
+    resume_processing(record)
+    record
   end
 
   def buffers(consumer), do: state(consumer).buffers
