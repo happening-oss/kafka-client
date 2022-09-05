@@ -64,20 +64,8 @@ final class ConsumerPoller
 
             consumer.close();
             System.exit(0);
-          } else if (message.equals("committed_offsets")) {
-            var committed = consumer.committed(consumer.assignment()).entrySet().stream()
-                .filter(entry -> entry.getValue() != null)
-                .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
-                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                    new OtpErlangInt(entry.getKey().partition()),
-                    new OtpErlangLong(entry.getValue().offset())
-                }))
-                .toArray(OtpErlangTuple[]::new);
-
-            output.write(new OtpErlangTuple(new OtpErlangObject[] {
-                new OtpErlangAtom("committed"),
-                new OtpErlangList(committed) }));
-          }
+          } else if (message.equals("committed_offsets"))
+            output.write(committedOffsetsToOtp(consumer.committed(consumer.assignment())));
         }
 
         backpressure.flush();
@@ -87,7 +75,7 @@ final class ConsumerPoller
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
         for (var record : records) {
-          writeToOutput(toOtp(record));
+          writeToOutput(recordToOtp(record));
 
           backpressure.recordProcessing(
               new TopicPartition(record.topic(), record.partition()),
@@ -114,18 +102,7 @@ final class ConsumerPoller
         }
       }
       consumer.assign(allPartitions);
-
-      var highWatermarks = consumer.endOffsets(allPartitions).entrySet().stream()
-          .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
-              new OtpErlangBinary(entry.getKey().topic().getBytes()),
-              new OtpErlangInt(entry.getKey().partition()),
-              new OtpErlangLong(entry.getValue())
-          }))
-          .toArray(OtpErlangTuple[]::new);
-
-      output.write(new OtpErlangTuple(new OtpErlangObject[] {
-          new OtpErlangAtom("end_offsets"),
-          new OtpErlangList(highWatermarks) }));
+      output.write(endOffsetsToOtp(consumer.endOffsets(allPartitions)));
 
     } else
       consumer.subscribe(topics, this);
@@ -182,7 +159,7 @@ final class ConsumerPoller
             .toArray(OtpErlangTuple[]::new));
   }
 
-  static private OtpErlangTuple toOtp(ConsumerRecord<String, byte[]> record) {
+  static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
     return new OtpErlangTuple(new OtpErlangObject[] {
         new OtpErlangAtom("record"),
         new OtpErlangBinary(record.topic().getBytes()),
@@ -191,6 +168,34 @@ final class ConsumerPoller
         new OtpErlangLong(record.timestamp()),
         new OtpErlangBinary(record.value())
     });
+  }
+
+  static private OtpErlangObject committedOffsetsToOtp(Map<TopicPartition, OffsetAndMetadata> map) {
+    var elements = map.entrySet().stream()
+        .filter(entry -> entry.getValue() != null)
+        .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
+            new OtpErlangBinary(entry.getKey().topic().getBytes()),
+            new OtpErlangInt(entry.getKey().partition()),
+            new OtpErlangLong(entry.getValue().offset())
+        })).toArray(OtpErlangTuple[]::new);
+
+    return new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("committed"),
+        new OtpErlangList(elements) });
+  }
+
+  static private OtpErlangObject endOffsetsToOtp(Map<TopicPartition, Long> map) {
+    var elements = map.entrySet().stream()
+        .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
+            new OtpErlangBinary(entry.getKey().topic().getBytes()),
+            new OtpErlangInt(entry.getKey().partition()),
+            new OtpErlangLong(entry.getValue())
+        }))
+        .toArray(OtpErlangTuple[]::new);
+
+    return new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("end_offsets"),
+        new OtpErlangList(elements) });
   }
 }
 
