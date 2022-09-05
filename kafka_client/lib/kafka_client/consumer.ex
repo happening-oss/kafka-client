@@ -53,7 +53,7 @@ defmodule KafkaClient.Consumer do
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     case :erlang.binary_to_term(data) do
-      {event_name, _} = event when event_name in ~w/partitions_assigned partitions_lost/a ->
+      {event_name, _} = event when event_name in ~w/assigned unassigned/a ->
         state.handler.(event)
         {:noreply, state}
 

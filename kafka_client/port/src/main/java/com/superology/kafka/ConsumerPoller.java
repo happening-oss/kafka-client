@@ -119,20 +119,21 @@ final class ConsumerPoller
 
   @Override
   public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+    emitRebalanceEvent("unassigned", partitions);
   }
 
   @Override
   public void onPartitionsLost(Collection<TopicPartition> partitions) {
-    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom("partitions_lost"),
-        toErlangList(partitions) }));
+    emitRebalanceEvent("unassigned", partitions);
   }
 
   @Override
   public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
-    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom("partitions_assigned"),
-        toErlangList(partitions) }));
+    emitRebalanceEvent("assigned", partitions);
+  }
+
+  private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
+    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom(event), toErlangList(partitions) }));
   }
 
   private void writeToOutput(Object message) {

@@ -28,7 +28,7 @@ defmodule KafkaClient.Test.Helper do
       )
 
     if group_id != nil,
-      do: assert_receive({:partitions_assigned, _partitions}, :timer.seconds(10))
+      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
     %{pid: pid, child_id: child_id, topics: topics}
   end
@@ -59,7 +59,7 @@ defmodule KafkaClient.Test.Helper do
   end
 
   defp handle_consumer_event({event_name, _} = event, test_pid)
-       when event_name in ~w/partitions_assigned partitions_lost polled/a,
+       when event_name in ~w/assigned unassigned polled/a,
        do: send(test_pid, event)
 
   defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
