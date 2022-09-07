@@ -15,7 +15,7 @@ defmodule KafkaClient.Test.Helper do
     test_pid = self()
     child_id = make_ref()
 
-    pid =
+    consumer_pid =
       ExUnit.Callbacks.start_supervised!(
         {KafkaClient.Consumer,
          servers: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end),
@@ -34,7 +34,7 @@ defmodule KafkaClient.Test.Helper do
       handler_id,
       [:kafka_client, :consumer, :record, :queue, :start],
       fn _name, _measurements, meta, _config ->
-        if meta.consumer_pid == pid, do: send(test_pid, {:polled, meta})
+        if self() == consumer_pid, do: send(test_pid, {:polled, meta})
       end,
       nil
     )
@@ -44,7 +44,7 @@ defmodule KafkaClient.Test.Helper do
     if group_id != nil,
       do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
-    %{pid: pid, child_id: child_id, topics: topics}
+    %{pid: consumer_pid, child_id: child_id, topics: topics}
   end
 
   defp consumer_topics(opts) do
@@ -80,7 +80,13 @@ defmodule KafkaClient.Test.Helper do
 
   defp handle_consumer_event({:record, record}, test_pid) do
     send(test_pid, {:processing, Map.put(record, :pid, self())})
-    receive(do: (:consume -> :ok))
+
+    receive do
+      :consume -> :ok
+      {:crash, reason} -> raise reason
+    end
+
+    send(test_pid, {:processed, record.topic, record.partition, record.offset})
   end
 
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
@@ -96,10 +102,15 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def resume_processing(record) do
-    mref = Process.monitor(record.pid)
     send(record.pid, :consume)
-    assert_receive {:DOWN, ^mref, :process, _pid, exit_reason}
-    if exit_reason == :normal, do: :ok, else: {:error, exit_reason}
+    %{topic: topic, partition: partition, offset: offset} = record
+    assert_receive {:processed, ^topic, ^partition, ^offset}
+    :ok
+  end
+
+  def crash_processing(record, reason) do
+    send(record.pid, {:crash, reason})
+    :ok
   end
 
   def assert_polled(topic, partition, offset) do
@@ -132,7 +143,6 @@ defmodule KafkaClient.Test.Helper do
     record
   end
 
-  def buffers(consumer), do: state(consumer).buffers
   def port(consumer), do: state(consumer).port
 
   def os_pid(port) do

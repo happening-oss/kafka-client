@@ -35,24 +35,6 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     assert_processing(topic2, 0)
   end
 
-  test "processing after the queue is drained" do
-    consumer = start_consumer!()
-    [topic] = consumer.topics
-
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
-
-    process_next_record!(topic, 0)
-    process_next_record!(topic, 0)
-    process_next_record!(topic, 0)
-
-    assert buffers(consumer) == %{}
-
-    produce(topic, partition: 0)
-    process_next_record!(topic, 0)
-  end
-
   test "processed messages are committed" do
     consumer = start_consumer!()
     [topic] = consumer.topics
@@ -81,5 +63,23 @@ defmodule KafkaClient.Consumer.ProcessingTest do
              {topic, 0, last_processed_record_partition_0.offset + 1},
              {topic, 1, last_processed_record_partition_1.offset + 1}
            ]
+  end
+
+  test "handler exception" do
+    consumer = start_consumer!()
+    [topic] = consumer.topics
+
+    produce(topic, partition: 0)
+    produced2 = produce(topic, partition: 0)
+
+    record = assert_processing(topic, 0)
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      crash_processing(record, "some reason")
+
+      record2 = assert_processing(topic, 0)
+      assert record2.offset == produced2.offset
+      assert record2.payload == produced2.payload
+    end)
   end
 end

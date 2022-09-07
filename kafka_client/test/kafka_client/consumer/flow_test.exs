@@ -90,8 +90,25 @@ defmodule KafkaClient.Consumer.FlowTest do
     port = port(consumer)
 
     ExUnit.CaptureLog.capture_log(fn ->
+      mref = Process.monitor(consumer.pid)
       kill_port(port)
-      assert port(consumer) != port
+      assert_receive {:DOWN, ^mref, :process, _pid, :port_crash}
+    end)
+  end
+
+  test "handling of a processor crash" do
+    consumer = start_consumer!()
+    [topic] = consumer.topics
+
+    produce(topic, partition: 0)
+    produce(topic, partition: 0)
+
+    record = assert_processing(topic, 0)
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      mref = Process.monitor(consumer.pid)
+      Process.exit(record.pid, :kill)
+      assert_receive {:DOWN, ^mref, :process, _pid, :processor_crashed}, :timer.seconds(10)
     end)
   end
 

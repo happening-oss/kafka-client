@@ -44,7 +44,6 @@ defmodule KafkaClient.Consumer do
       handler: handler,
       port: nil,
       port_args: port_args(consumer_params, topics, poller_properties),
-      buffers: %{},
       end_offsets: nil
     }
 
@@ -54,27 +53,23 @@ defmodule KafkaClient.Consumer do
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state) do
     case :erlang.binary_to_term(data) do
+      {:assigned, partitions} = event ->
+        Enum.each(partitions, &start_processor!(state, &1))
+        state.handler.(event)
+        {:noreply, state}
+
       {:unassigned, partitions} = event ->
         Enum.each(partitions, &Parent.shutdown_child({:processor, &1}))
-        buffers = Enum.reduce(partitions, state.buffers, &Map.delete(&2, &1))
-        state = %{state | buffers: buffers}
-        state.handler.(event)
-        {:noreply, state}
-
-      {:assigned, _partitions} = event ->
-        state.handler.(event)
-        {:noreply, state}
-
-      {:committed, _offsets} = event ->
         state.handler.(event)
         {:noreply, state}
 
       {:end_offsets, end_offsets} ->
         end_offsets =
           for {topic, partition, offset} <- end_offsets,
+              start_processor!(state, {topic, partition}, offset),
               offset > 0,
-              into: %{},
-              do: {{topic, partition}, offset}
+              into: MapSet.new(),
+              do: {topic, partition}
 
         {:noreply, maybe_notify_caught_up(%{state | end_offsets: end_offsets})}
 
@@ -84,154 +79,61 @@ defmodule KafkaClient.Consumer do
         :telemetry.execute(
           [:kafka_client, :consumer, :record, :queue, :start],
           %{system_time: System.system_time(), monotonic_time: now},
-          %{
-            consumer_pid: self(),
-            topic: topic,
-            partition: partition,
-            offset: offset,
-            timestamp: timestamp
-          }
+          %{topic: topic, partition: partition, offset: offset, timestamp: timestamp}
         )
 
-        state =
-          if Parent.child?({:processor, {topic, partition}}) do
-            buffer =
-              state.buffers
-              |> Map.get_lazy({topic, partition}, &:queue.new/0)
-              |> then(&:queue.in({offset, timestamp, payload, now}, &1))
-
-            %{state | buffers: Map.put(state.buffers, {topic, partition}, buffer)}
-          else
-            start_processor!(topic, partition, offset, timestamp, payload, now, state.handler)
-            state
-          end
+        {:ok, pid} = Parent.child_pid({:processor, {topic, partition}})
+        KafkaClient.Consumer.Processor.handle_record(pid, offset, timestamp, payload, now)
 
         {:noreply, state}
+
+      {:committed, _offsets} = event ->
+        state.handler.(event)
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:caught_up, partition}, state) do
+    if state.end_offsets == nil do
+      {:noreply, state}
+    else
+      state = update_in(state.end_offsets, &MapSet.delete(&1, partition))
+      {:noreply, maybe_notify_caught_up(state)}
     end
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     Logger.error("port exited with status #{status}")
-    Parent.shutdown_all()
-    {:noreply, open_port(%{state | buffers: %{}})}
+    {:stop, :port_crash, %{state | port: nil}}
   end
-
-  def handle_info({:EXIT, port, _reason}, state) when is_port(port),
-    do: {:noreply, state}
 
   @impl GenServer
   def terminate(_reason, %{port: port}) do
-    Port.command(port, :erlang.term_to_binary({:stop}))
+    if port != nil do
+      Port.command(port, :erlang.term_to_binary({:stop}))
 
-    receive do
-      {^port, {:exit_status, _status}} -> :ok
-    after
-      :timer.seconds(5) -> :ok
+      receive do
+        {^port, {:exit_status, _status}} -> :ok
+      after
+        :timer.seconds(5) -> :ok
+      end
     end
   end
 
   @impl Parent.GenServer
   def handle_stopped_children(children, state) do
-    state = Enum.reduce(children, state, &handle_stopped_child/2)
-    {:noreply, state}
+    if Enum.any?(Map.keys(children), &match?({:processor, {_topic, _partition}}, &1)),
+      do: {:stop, :processor_crashed, state},
+      else: {:noreply, state}
   end
-
-  defp handle_stopped_child({{:processor, {topic, partition}}, process_info}, state) do
-    {offset, _timestamp} = process_info.meta
-
-    Port.command(
-      state.port,
-      :erlang.term_to_binary({:ack, topic, partition, offset})
-    )
-
-    state =
-      with %{end_offsets: %{} = end_offsets} <- state do
-        end_offset = Map.get(end_offsets, {topic, partition}, 0)
-        {processed_offset, _timestamp} = process_info.meta
-
-        end_offsets =
-          if processed_offset + 1 >= end_offset,
-            do: Map.delete(end_offsets, {topic, partition}),
-            else: end_offsets
-
-        maybe_notify_caught_up(%{state | end_offsets: end_offsets})
-      end
-
-    case Map.fetch(state.buffers, {topic, partition}) do
-      :error ->
-        state
-
-      {:ok, buffer} ->
-        case :queue.out(buffer) do
-          {{:value, {offset, timestamp, payload, enqueued_at}}, buffer} ->
-            start_processor!(
-              topic,
-              partition,
-              offset,
-              timestamp,
-              payload,
-              enqueued_at,
-              state.handler
-            )
-
-            %{state | buffers: Map.put(state.buffers, {topic, partition}, buffer)}
-
-          {:empty, _empty_buffer} ->
-            %{state | buffers: Map.delete(state.buffers, {topic, partition})}
-        end
-    end
-  end
-
-  defp handle_stopped_child(_other_child, state), do: state
 
   defp maybe_notify_caught_up(state) do
-    with %{end_offsets: end_offsets} when map_size(end_offsets) == 0 <- state do
+    if MapSet.size(state.end_offsets) == 0 do
       state.handler.(:caught_up)
       %{state | end_offsets: nil}
+    else
+      state
     end
-  end
-
-  defp start_processor!(topic, partition, offset, timestamp, payload, enqueued_at, handler) do
-    {:ok, pid} =
-      Parent.start_child(%{
-        id: {:processor, {topic, partition}},
-        meta: {offset, timestamp},
-        restart: :temporary,
-        ephemeral?: true,
-        start: fn ->
-          now = System.monotonic_time()
-
-          Task.start_link(fn ->
-            :telemetry.execute(
-              [:kafka_client, :consumer, :record, :queue, :stop],
-              %{
-                system_time: System.system_time(),
-                monotonic_time: now,
-                duration: now - enqueued_at
-              },
-              %{
-                consumer_pid: self(),
-                topic: topic,
-                partition: partition,
-                offset: offset,
-                timestamp: timestamp
-              }
-            )
-
-            record = %{
-              topic: topic,
-              partition: partition,
-              offset: offset,
-              timestamp: timestamp,
-              payload: payload
-            }
-
-            handler.({:record, record})
-          end)
-        end
-      })
-
-    pid
   end
 
   defp open_port(state) do
@@ -259,5 +161,19 @@ defmodule KafkaClient.Consumer do
       topics |> :erlang.term_to_binary() |> Base.encode64(),
       poller_properties |> :erlang.term_to_binary() |> Base.encode64()
     ]
+  end
+
+  defp start_processor!(state, {topic, partition}, end_offset \\ nil) do
+    {:ok, pid} =
+      Parent.start_child(
+        {KafkaClient.Consumer.Processor,
+         {self(), topic, partition, end_offset, state.handler, state.port}},
+        id: {:processor, {topic, partition}},
+        restart: :temporary,
+        ephemeral?: true,
+        shutdown: :brutal_kill
+      )
+
+    pid
   end
 end

@@ -29,7 +29,6 @@ final class ConsumerOutput implements Runnable {
   @Override
   public void run() {
     try (var output = new DataOutputStream(new FileOutputStream("/dev/fd/4"))) {
-
       while (true) {
         var message = this.outputs.take();
         write(output, (OtpErlangObject) message);
