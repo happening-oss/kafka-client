@@ -28,6 +28,19 @@ defmodule KafkaClient.Test.Helper do
         restart: :temporary
       )
 
+    handler_id = make_ref()
+
+    :telemetry.attach(
+      handler_id,
+      [:kafka_client, :consumer, :record, :queue, :start],
+      fn _name, _measurements, meta, _config ->
+        if meta.consumer_pid == pid, do: send(test_pid, {:polled, meta})
+      end,
+      nil
+    )
+
+    ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
+
     if group_id != nil,
       do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
@@ -90,11 +103,13 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def assert_polled(topic, partition, offset) do
-    assert_receive {:polled, {^topic, ^partition, ^offset, _timestamp}}, :timer.seconds(10)
+    assert_receive {:polled, %{topic: ^topic, partition: ^partition, offset: ^offset}},
+                   :timer.seconds(10)
   end
 
   def refute_polled(topic, partition, offset) do
-    refute_receive {:polled, {^topic, ^partition, ^offset, _timestamp}}, :timer.seconds(1)
+    refute_receive {:polled, %{topic: ^topic, partition: ^partition, offset: ^offset}},
+                   :timer.seconds(1)
   end
 
   def assert_processing(topic, partition) do

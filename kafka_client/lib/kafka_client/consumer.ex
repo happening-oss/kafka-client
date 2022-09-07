@@ -79,18 +79,30 @@ defmodule KafkaClient.Consumer do
         {:noreply, maybe_notify_caught_up(%{state | end_offsets: end_offsets})}
 
       {:record, topic, partition, offset, timestamp, payload} ->
-        state.handler.({:polled, {topic, partition, offset, timestamp}})
+        now = System.monotonic_time()
+
+        :telemetry.execute(
+          [:kafka_client, :consumer, :record, :queue, :start],
+          %{system_time: System.system_time(), monotonic_time: now},
+          %{
+            consumer_pid: self(),
+            topic: topic,
+            partition: partition,
+            offset: offset,
+            timestamp: timestamp
+          }
+        )
 
         state =
           if Parent.child?({:processor, {topic, partition}}) do
             buffer =
               state.buffers
               |> Map.get_lazy({topic, partition}, &:queue.new/0)
-              |> then(&:queue.in({offset, timestamp, payload}, &1))
+              |> then(&:queue.in({offset, timestamp, payload, now}, &1))
 
             %{state | buffers: Map.put(state.buffers, {topic, partition}, buffer)}
           else
-            start_processor!(topic, partition, offset, timestamp, payload, state.handler)
+            start_processor!(topic, partition, offset, timestamp, payload, now, state.handler)
             state
           end
 
@@ -151,8 +163,17 @@ defmodule KafkaClient.Consumer do
 
       {:ok, buffer} ->
         case :queue.out(buffer) do
-          {{:value, {offset, timestamp, payload}}, buffer} ->
-            start_processor!(topic, partition, offset, timestamp, payload, state.handler)
+          {{:value, {offset, timestamp, payload, enqueued_at}}, buffer} ->
+            start_processor!(
+              topic,
+              partition,
+              offset,
+              timestamp,
+              payload,
+              enqueued_at,
+              state.handler
+            )
+
             %{state | buffers: Map.put(state.buffers, {topic, partition}, buffer)}
 
           {:empty, _empty_buffer} ->
@@ -170,7 +191,7 @@ defmodule KafkaClient.Consumer do
     end
   end
 
-  defp start_processor!(topic, partition, offset, timestamp, payload, handler) do
+  defp start_processor!(topic, partition, offset, timestamp, payload, enqueued_at, handler) do
     {:ok, pid} =
       Parent.start_child(%{
         id: {:processor, {topic, partition}},
@@ -178,7 +199,25 @@ defmodule KafkaClient.Consumer do
         restart: :temporary,
         ephemeral?: true,
         start: fn ->
+          now = System.monotonic_time()
+
           Task.start_link(fn ->
+            :telemetry.execute(
+              [:kafka_client, :consumer, :record, :queue, :stop],
+              %{
+                system_time: System.system_time(),
+                monotonic_time: now,
+                duration: now - enqueued_at
+              },
+              %{
+                consumer_pid: self(),
+                topic: topic,
+                partition: partition,
+                offset: offset,
+                timestamp: timestamp
+              }
+            )
+
             record = %{
               topic: topic,
               partition: partition,

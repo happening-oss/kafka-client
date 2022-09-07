@@ -7,6 +7,18 @@ message_size = 10_000
 batch_size = div(1_000_000, message_size) |> max(1) |> min(100)
 message = String.duplicate("a", message_size)
 
+metrics = :counters.new(2, [:write_concurrency])
+
+:telemetry.attach(
+  :bench,
+  [:kafka_client, :consumer, :record, :queue, :stop],
+  fn _name, measurements, _meta, _config ->
+    :counters.add(metrics, 1, 1)
+    :counters.add(metrics, 2, measurements.duration)
+  end,
+  nil
+)
+
 IO.puts("recreating topic #{topic}")
 KafkaClient.Admin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
 
@@ -35,7 +47,6 @@ KafkaClient.Consumer.start_link(
   topics: [topic],
   handler: fn
     {:assigned, _partitions} -> send(bench_pid, :consuming)
-    {:polled, {_topic, _partition, _offset, _timestamp}} -> :ok
     {:record, _record} -> send(bench_pid, :message_processing)
   end
 )
@@ -57,6 +68,11 @@ end
     end)
   end)
 
+avg_latency =
+  :counters.get(metrics, 2)
+  |> div(:counters.get(metrics, 1))
+  |> System.convert_time_unit(:native, :microsecond)
+
 IO.puts("""
 
 message count: #{num_messages}
@@ -66,4 +82,5 @@ concurrency (partitions count): #{num_partitions}
 total time: #{div(time, 1000)} ms
 throughput: #{floor(num_messages / time * 1_000_000)} messages/sec
 
+avg latency: #{avg_latency} us
 """)

@@ -73,7 +73,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     last_processed_record_partition_1 = process_next_record!(topic, 1)
 
     # wait a bit to ensure that the processed records are committed
-    Process.sleep(200)
+    Process.sleep(500)
     Port.command(port(consumer), :erlang.term_to_binary({:committed_offsets}))
     assert_receive {:committed, offsets}
 
