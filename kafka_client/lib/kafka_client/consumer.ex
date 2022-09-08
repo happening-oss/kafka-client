@@ -87,6 +87,22 @@ defmodule KafkaClient.Consumer do
 
         {:noreply, state}
 
+      {:metrics, transfer_time, duration} ->
+        transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
+        duration = System.convert_time_unit(duration, :nanosecond, :native)
+
+        :telemetry.execute(
+          [:kafka_client, :consumer, :port, :stop],
+          %{
+            system_time: System.system_time(),
+            transfer_time: transfer_time,
+            duration: duration
+          },
+          %{}
+        )
+
+        {:noreply, state}
+
       {:committed, _offsets} = event ->
         state.handler.(event)
         {:noreply, state}

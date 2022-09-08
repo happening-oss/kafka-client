@@ -24,14 +24,20 @@ defmodule KafkaClient.Consumer.Processor do
       payload: payload
     }
 
+    telemetry_meta = %{topic: topic, partition: partition, offset: offset, timestamp: timestamp}
+
     :telemetry.execute(
       [:kafka_client, :consumer, :record, :queue, :stop],
       %{system_time: System.system_time(), monotonic_time: now, duration: now - enqueued_at},
-      record
+      telemetry_meta
     )
 
     try do
-      handler.({:record, record})
+      :telemetry.span(
+        [:kafka_client, :consumer, :record, :handler],
+        %{},
+        fn -> {handler.({:record, record}), telemetry_meta} end
+      )
     catch
       kind, payload when kind != :exit ->
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))

@@ -141,7 +141,7 @@ final class ConsumerPoller
     writeToOutput(new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom(event), toErlangList(partitions) }));
   }
 
-  private void writeToOutput(Object message) {
+  private void writeToOutput(OtpErlangObject message) {
     try {
       output.write(message);
     } catch (InterruptedException e) {

@@ -15,23 +15,37 @@ final class ConsumerOutput implements Runnable {
     return output;
   }
 
-  private BlockingQueue<Object> outputs;
+  private BlockingQueue<Message> messages;
 
   private ConsumerOutput() {
-    this.outputs = new LinkedBlockingQueue<Object>();
+    messages = new LinkedBlockingQueue<Message>();
   }
 
-  public void write(Object message)
+  public void write(OtpErlangObject payload)
       throws InterruptedException {
-    this.outputs.put(message);
+    messages.put(new Message(payload, System.nanoTime()));
   }
 
   @Override
   public void run() {
     try (var output = new DataOutputStream(new FileOutputStream("/dev/fd/4"))) {
       while (true) {
-        var message = this.outputs.take();
-        write(output, (OtpErlangObject) message);
+        var message = this.messages.take();
+
+        var sendingAt = System.nanoTime();
+        write(output, message.payload());
+        var sentAt = System.nanoTime();
+
+        if (message.startTime() != null) {
+          var duration = sentAt - message.startTime();
+          write(
+              output,
+              new OtpErlangTuple(new OtpErlangObject[] {
+                  new OtpErlangAtom("metrics"),
+                  new OtpErlangLong(sentAt - sendingAt),
+                  new OtpErlangLong(duration)
+              }));
+        }
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());
@@ -53,4 +67,7 @@ final class ConsumerOutput implements Runnable {
       output.write(bytes);
     }
   }
+}
+
+record Message(OtpErlangObject payload, Long startTime) {
 }

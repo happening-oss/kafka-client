@@ -1,3 +1,5 @@
+bench_pid = self()
+
 brokers = [{"localhost", 9092}]
 
 topic = "kafka_client_bench"
@@ -7,14 +9,27 @@ message_size = 10_000
 batch_size = div(1_000_000, message_size) |> max(1) |> min(100)
 message = String.duplicate("a", message_size)
 
-metrics = :counters.new(2, [:write_concurrency])
+metrics = :atomics.new(4, signed: false)
+transfers = :ets.new(:transfers, [:public, write_concurrency: true])
 
 :telemetry.attach(
-  :bench,
+  :elixir_bench,
   [:kafka_client, :consumer, :record, :queue, :stop],
   fn _name, measurements, _meta, _config ->
-    :counters.add(metrics, 1, 1)
-    :counters.add(metrics, 2, measurements.duration)
+    count = :atomics.add_get(metrics, 1, 1)
+    :atomics.add(metrics, 2, measurements.duration)
+    if count == num_messages, do: send(bench_pid, :done)
+  end,
+  nil
+)
+
+:telemetry.attach(
+  :java_bench,
+  [:kafka_client, :consumer, :port, :stop],
+  fn _name, measurements, _meta, _config ->
+    :atomics.add(metrics, 3, 1)
+    :atomics.add(metrics, 4, measurements.duration)
+    :ets.insert(transfers, {make_ref(), measurements.transfer_time})
   end,
   nil
 )
@@ -39,15 +54,13 @@ IO.puts("producing messages")
 )
 |> Stream.run()
 
-bench_pid = self()
-
 KafkaClient.Consumer.start_link(
   servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
   group_id: "test_group",
   topics: [topic],
   handler: fn
     {:assigned, _partitions} -> send(bench_pid, :consuming)
-    {:record, _record} -> send(bench_pid, :message_processing)
+    {:record, _record} -> :ok
   end
 )
 
@@ -59,19 +72,39 @@ end
 
 {time, _} =
   :timer.tc(fn ->
-    Enum.each(1..num_messages, fn _ ->
-      receive do
-        :message_processing -> :ok
-      after
-        :timer.seconds(5) -> raise "timeout"
-      end
-    end)
+    receive do
+      :done -> :ok
+    after
+      :timer.minutes(2) -> raise "timeout"
+    end
   end)
 
-avg_latency =
-  :counters.get(metrics, 2)
-  |> div(:counters.get(metrics, 1))
+avg_elixir_queue_time =
+  :atomics.get(metrics, 2)
+  |> div(:atomics.get(metrics, 1))
   |> System.convert_time_unit(:native, :microsecond)
+
+avg_java_queue_time =
+  :atomics.get(metrics, 4)
+  |> div(:atomics.get(metrics, 3))
+  |> System.convert_time_unit(:native, :microsecond)
+
+transfer_stats =
+  transfers
+  |> :ets.tab2list()
+  |> Enum.map(fn {_, duration} -> duration end)
+  |> Statistex.statistics(percentiles: [50, 90, 99])
+
+transfer_times =
+  [
+    transfer_stats.average,
+    transfer_stats.percentiles[90],
+    transfer_stats.percentiles[99]
+  ]
+  |> Enum.map(&(&1 |> ceil() |> System.convert_time_unit(:native, :microsecond)))
+  |> Enum.zip(~w/avg 90p 99p/)
+  |> Enum.map(fn {value, label} -> "#{label}=#{value}us" end)
+  |> Enum.join(" ")
 
 IO.puts("""
 
@@ -79,8 +112,8 @@ message count: #{num_messages}
 message size: #{message_size} bytes
 concurrency (partitions count): #{num_partitions}
 
-total time: #{div(time, 1000)} ms
-throughput: #{floor(num_messages / time * 1_000_000)} messages/sec
+throughput: #{floor(num_messages / time * 1_000_000)} messages/s
+average time in queue: #{max(avg_elixir_queue_time + avg_java_queue_time, 0)} us
+java -> elixir transfer time: #{transfer_times}
 
-avg latency: #{avg_latency} us
 """)
