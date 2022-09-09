@@ -7,6 +7,7 @@ defmodule KafkaClient.Consumer do
     topics = Keyword.fetch!(opts, :topics)
     group_id = Keyword.get(opts, :group_id)
     handler = Keyword.fetch!(opts, :handler)
+    user_consumer_params = Keyword.get(opts, :consumer_params, %{})
 
     poller_properties = %{
       "poll_duration" => Keyword.get(opts, :poll_duration, 10),
@@ -15,18 +16,15 @@ defmodule KafkaClient.Consumer do
 
     consumer_params =
       %{
-        "bootstrap.servers" => Enum.join(servers, ","),
         "heartbeat.interval.ms" => 100,
         "max.poll.interval.ms" => 1000,
         "auto.offset.reset" => "earliest"
       }
-      |> Map.merge(Keyword.get(opts, :consumer_params, %{}))
-      |> Map.merge(
-        if group_id != nil,
-          do: %{"group.id" => group_id},
-          else: %{}
-      )
+      |> Map.merge(user_consumer_params)
+      # non-overridable params
       |> Map.merge(%{
+        "bootstrap.servers" => Enum.join(servers, ","),
+        "group.id" => group_id,
         "enable.auto.commit" => false,
         "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
         "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer"
