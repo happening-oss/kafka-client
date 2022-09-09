@@ -14,18 +14,22 @@ defmodule KafkaClient.Consumer.Processor do
 
   @impl GenServer
   def handle_cast({:record, offset, timestamp, payload, enqueued_at}, state) do
-    {parent, topic, partition, end_offset, handler, port} = state
     now = System.monotonic_time()
 
     record = %{
-      topic: topic,
-      partition: partition,
+      topic: state.topic,
+      partition: state.partition,
       offset: offset,
       timestamp: timestamp,
       payload: payload
     }
 
-    telemetry_meta = %{topic: topic, partition: partition, offset: offset, timestamp: timestamp}
+    telemetry_meta = %{
+      topic: state.topic,
+      partition: state.partition,
+      offset: offset,
+      timestamp: timestamp
+    }
 
     :telemetry.execute(
       [:kafka_client, :consumer, :record, :queue, :stop],
@@ -37,19 +41,19 @@ defmodule KafkaClient.Consumer.Processor do
       :telemetry.span(
         [:kafka_client, :consumer, :record, :handler],
         %{},
-        fn -> {handler.({:record, record}), telemetry_meta} end
+        fn -> {state.handler.({:record, record}), telemetry_meta} end
       )
     catch
       kind, payload when kind != :exit ->
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    Port.ack(port, topic, partition, offset)
+    Port.ack(state.port, state.topic, state.partition, offset)
 
     state =
-      if end_offset != nil and offset + 1 >= end_offset do
-        send(parent, {:caught_up, {topic, partition}})
-        {parent, topic, partition, nil, handler, port}
+      if state.end_offset != nil and offset + 1 >= state.end_offset do
+        send(state.parent, {:caught_up, {state.topic, state.partition}})
+        %{state | end_offset: nil}
       else
         state
       end

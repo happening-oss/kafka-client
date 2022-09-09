@@ -115,16 +115,31 @@ defmodule KafkaClient.Consumer do
       partitions,
       fn partition ->
         {topic, partition, end_offset} =
-          with {topic, partition} <- partition, do: {topic, partition, nil}
+          case partition do
+            {topic, partition} ->
+              {topic, partition, nil}
 
-        # if end_offset is 0, the topic is empty, so we'll send `nil` to the processor, to indicate
-        # that it doesn't need to emit the caught_up notification
-        end_offset = with 0 <- end_offset, do: nil
+            # if end_offset is 0, the topic is empty, so we'll send `nil` to the processor, to indicate
+            # that it doesn't need to emit the caught_up notification
+            {topic, partition, 0} ->
+              {topic, partition, nil}
+
+            {_topic, _partition, _offset} ->
+              partition
+          end
+
+        arg = %{
+          parent: self(),
+          topic: topic,
+          partition: partition,
+          end_offset: end_offset,
+          handler: state.handler,
+          port: state.port
+        }
 
         {:ok, _pid} =
           Parent.start_child(
-            {KafkaClient.Consumer.Processor,
-             {self(), topic, partition, end_offset, state.handler, state.port}},
+            {KafkaClient.Consumer.Processor, arg},
             id: {:processor, {topic, partition}},
             restart: :temporary,
             ephemeral?: true,
