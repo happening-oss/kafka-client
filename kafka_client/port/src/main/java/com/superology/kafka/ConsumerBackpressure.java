@@ -5,17 +5,32 @@ import java.util.*;
 import org.apache.kafka.common.*;
 import org.apache.kafka.clients.consumer.*;
 
-final class Backpressure {
+/**
+ * This class implements the backpressure flow of the poller. The poller
+ * immediately sends all polled records to Elixir. However, using this class,
+ * the poller keeps track of the records sent to Elixir but not yet processed.
+ * These records are kept as a collection of queues, one per each partition.
+ * When Elixir processes a record, it will send back an ack message to the
+ * poller, which will in turn remove the record from the corresponding queue.
+ *
+ * When a record is added to the queue, if the queue becomes large (in length or
+ * in total byte size), polling from the corresponding partition is paused.
+ *
+ * When a record is removed from the queue, if the queue is small enough,
+ * polling from the corresponding partition will be resumed.
+ */
+final class ConsumerBackpressure {
   private Consumer consumer;
   private HashSet<TopicPartition> pausedPartitions = new HashSet<TopicPartition>();
   private HashSet<TopicPartition> resumedPartitions = new HashSet<TopicPartition>();
   private HashMap<TopicPartition, Queue> queues = new HashMap<TopicPartition, Queue>();
 
-  public Backpressure(Consumer consumer) {
+  public ConsumerBackpressure(Consumer consumer) {
     this.consumer = consumer;
   }
 
-  public void recordProcessing(ConsumerRecord<String, byte[]> record) {
+  // Invoked by the poller when a record is polled from the broker.
+  public void recordPolled(ConsumerRecord<String, byte[]> record) {
     var partition = new TopicPartition(record.topic(), record.partition());
     var queue = queues.get(partition);
     if (queue == null) {
@@ -23,13 +38,14 @@ final class Backpressure {
       queues.put(partition, queue);
     }
 
-    queue.recordProcessing(record);
+    queue.recordPolled(record);
     if (queue.shouldPause()) {
       pausedPartitions.add(partition);
       resumedPartitions.remove(partition);
     }
   }
 
+  // Invoked by the poller when a record has been fully processed in Elixir.
   public void recordProcessed(TopicPartition partition) {
     var queue = queues.get(partition);
     if (queue != null) {
@@ -42,18 +58,23 @@ final class Backpressure {
     }
   }
 
+  // Invoked to flush all pauses/resumes.
   public void flush() {
     queues.keySet().retainAll(consumer.assignment());
 
+    // Note that we're not clearing pauses. That way we'll end up invoking `pause`
+    // before every poll, but that's ok, because it's an idempotent in-memory
+    // operation. By doing this we ensure that a partition remains paused after a
+    // rebalance.
     pausedPartitions.retainAll(consumer.assignment());
     consumer.pause(pausedPartitions);
-    pausedPartitions.clear();
 
     resumedPartitions.retainAll(consumer.assignment());
     consumer.resume(resumedPartitions);
     resumedPartitions.clear();
   }
 
+  // Invoked by the poller when the partitions are lost due to a rebalance.
   public void removePartitions(Collection<TopicPartition> partitions) {
     pausedPartitions.removeAll(partitions);
     resumedPartitions.removeAll(partitions);
@@ -67,7 +88,7 @@ final class Backpressure {
       return numMessages() == 0;
     }
 
-    public void recordProcessing(ConsumerRecord<String, byte[]> record) {
+    public void recordPolled(ConsumerRecord<String, byte[]> record) {
       var messageSize = record.value().length;
       messageSizes.add(messageSize);
       totalBytes += messageSize;

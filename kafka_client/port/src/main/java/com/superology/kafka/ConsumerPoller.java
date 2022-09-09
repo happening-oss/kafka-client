@@ -14,7 +14,7 @@ final class ConsumerPoller
   private Properties pollerProps;
   private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
   private Commits commits;
-  private Backpressure backpressure;
+  private ConsumerBackpressure backpressure;
 
   public static ConsumerPoller notifier(
       Properties consumerProps,
@@ -50,7 +50,7 @@ final class ConsumerPoller
       var pollInterval = (int) pollerProps.getOrDefault("poll_interval", 10);
       var commitInterval = (int) pollerProps.getOrDefault("commmit_interval", 5000);
       commits = new Commits(consumer, commitInterval);
-      backpressure = new Backpressure(consumer);
+      backpressure = new ConsumerBackpressure(consumer);
 
       while (true) {
         // commands issued by Elixir, such as ack or stop
@@ -66,7 +66,7 @@ final class ConsumerPoller
 
         for (var record : records) {
           notifyElixir(recordToOtp(record));
-          backpressure.recordProcessing(record);
+          backpressure.recordPolled(record);
         }
       }
     } catch (Exception e) {
