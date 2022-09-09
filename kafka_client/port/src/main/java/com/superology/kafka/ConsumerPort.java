@@ -1,27 +1,20 @@
-package com.superology;
+package com.superology.kafka;
 
-import java.io.DataInputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Properties;
-
-import org.apache.kafka.common.TopicPartition;
-
+import java.io.*;
+import java.util.*;
+import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
-public class KafkaConsumerPort {
+public class ConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
       var consumerProps = decodeProperties(args[0]);
       var topics = decodeTopics(args[1]);
-      var output = KafkaConsumerOutput.start();
-      var pollInterval = ((OtpErlangLong) otpDecode(java.util.Base64.getDecoder().decode(args[2]))).longValue();
-      var poller = KafkaConsumerPoller.start(consumerProps, topics, pollInterval, output);
+      var pollerProps = decodeProperties(args[2]);
+      var output = ConsumerOutput.start();
+      var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, output);
 
       while (true) {
         var length = readInt(input);
@@ -29,10 +22,17 @@ public class KafkaConsumerPort {
         var message = (OtpErlangTuple) otpDecode(messageBytes);
 
         switch (message.elementAt(0).toString()) {
-          case "notify_processed":
-            var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
-            var partition = ((OtpErlangLong) message.elementAt(2)).intValue();
-            poller.ack(new TopicPartition(topic, partition));
+          case "ack":
+            poller.addMessage(decodeAck(message));
+            break;
+
+          case "stop":
+            poller.addMessage("stop");
+            break;
+
+          case "committed_offsets":
+            poller.addMessage("committed_offsets");
+            break;
         }
       }
     } catch (java.io.EOFException e) {
@@ -92,6 +92,14 @@ public class KafkaConsumerPort {
     for (var topic : (OtpErlangList) otpDecode(topicBytes))
       topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
     return topics;
+  }
+
+  private static Ack decodeAck(OtpErlangTuple message) throws OtpErlangRangeException {
+    var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
+    var partitionNo = ((OtpErlangLong) message.elementAt(2)).intValue();
+    var partition = new TopicPartition(topic, partitionNo);
+    var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
+    return new Ack(partition, offset);
   }
 
   private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {

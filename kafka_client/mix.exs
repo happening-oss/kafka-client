@@ -24,8 +24,10 @@ defmodule KafkaClient.MixProject do
 
   defp deps do
     [
+      {:brod, "~> 3.16", only: [:dev, :test]},
       {:parent, "~> 0.12"},
-      {:brod, "~> 3.16", only: [:dev, :test]}
+      {:telemetry, "~> 1.0"},
+      {:statistex, "~> 1.0", only: [:dev, :test]}
     ]
   end
 

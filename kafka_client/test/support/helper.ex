@@ -1,33 +1,50 @@
 defmodule KafkaClient.Test.Helper do
   import ExUnit.Assertions
 
+  def unique(prefix), do: "#{prefix}_#{System.unique_integer([:positive, :monotonic])}"
+
   def initialize_producer! do
     :ok = :brod.start_client(brokers(), :test_client, auto_start_producers: true)
   end
 
   def start_consumer!(opts \\ []) do
-    group_id = Keyword.get(opts, :group_id, "test_group")
+    group_id = Keyword.get(opts, :group_id, unique("test_group"))
+
     topics = consumer_topics(opts)
 
     test_pid = self()
     child_id = make_ref()
 
-    pid =
+    consumer_pid =
       ExUnit.Callbacks.start_supervised!(
         {KafkaClient.Consumer,
          servers: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end),
          group_id: group_id,
          topics: topics,
          handler: &handle_consumer_event(&1, test_pid),
+         commit_interval: 50,
          consumer_params: Keyword.get(opts, :consumer_params, %{})},
         id: child_id,
         restart: :temporary
       )
 
-    if group_id != nil,
-      do: assert_receive({:partitions_assigned, _partitions}, :timer.seconds(10))
+    handler_id = make_ref()
 
-    %{pid: pid, child_id: child_id, topics: topics}
+    :telemetry.attach(
+      handler_id,
+      [:kafka_client, :consumer, :record, :queue, :start],
+      fn _name, _measurements, meta, _config ->
+        if self() == consumer_pid, do: send(test_pid, {:polled, meta})
+      end,
+      nil
+    )
+
+    ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    if group_id != nil,
+      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
+
+    %{pid: consumer_pid, child_id: child_id, topics: topics}
   end
 
   defp consumer_topics(opts) do
@@ -38,9 +55,7 @@ defmodule KafkaClient.Test.Helper do
         fn ->
           Enum.map(
             1..Keyword.get(opts, :num_topics, 1)//1,
-            fn _ ->
-              "kafka_client_test_topic_#{System.unique_integer([:positive, :monotonic])}"
-            end
+            fn _ -> unique("kafka_client_test_topic") end
           )
         end
       )
@@ -58,14 +73,20 @@ defmodule KafkaClient.Test.Helper do
   end
 
   defp handle_consumer_event({event_name, _} = event, test_pid)
-       when event_name in ~w/partitions_assigned partitions_lost polled/a,
+       when event_name in ~w/assigned unassigned polled committed/a,
        do: send(test_pid, event)
 
   defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
 
   defp handle_consumer_event({:record, record}, test_pid) do
     send(test_pid, {:processing, Map.put(record, :pid, self())})
-    receive(do: (:consume -> :ok))
+
+    receive do
+      :consume -> :ok
+      {:crash, reason} -> raise reason
+    end
+
+    send(test_pid, {:processed, record.topic, record.partition, record.offset})
   end
 
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
@@ -81,18 +102,25 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def resume_processing(record) do
-    mref = Process.monitor(record.pid)
     send(record.pid, :consume)
-    assert_receive {:DOWN, ^mref, :process, _pid, exit_reason}
-    if exit_reason == :normal, do: :ok, else: {:error, exit_reason}
+    %{topic: topic, partition: partition, offset: offset} = record
+    assert_receive {:processed, ^topic, ^partition, ^offset}
+    :ok
+  end
+
+  def crash_processing(record, reason) do
+    send(record.pid, {:crash, reason})
+    :ok
   end
 
   def assert_polled(topic, partition, offset) do
-    assert_receive {:polled, {^topic, ^partition, ^offset, _timestamp}}, :timer.seconds(10)
+    assert_receive {:polled, %{topic: ^topic, partition: ^partition, offset: ^offset}},
+                   :timer.seconds(10)
   end
 
   def refute_polled(topic, partition, offset) do
-    refute_receive {:polled, {^topic, ^partition, ^offset, _timestamp}}, :timer.seconds(1)
+    refute_receive {:polled, %{topic: ^topic, partition: ^partition, offset: ^offset}},
+                   :timer.seconds(1)
   end
 
   def assert_processing(topic, partition) do
@@ -110,12 +138,11 @@ defmodule KafkaClient.Test.Helper do
   def refute_caught_up, do: refute_receive(:caught_up, :timer.seconds(1))
 
   def process_next_record!(topic, partition) do
-    topic
-    |> assert_processing(partition)
-    |> resume_processing()
+    record = assert_processing(topic, partition)
+    resume_processing(record)
+    record
   end
 
-  def buffers(consumer), do: state(consumer).buffers
   def port(consumer), do: state(consumer).port
 
   def os_pid(port) do
