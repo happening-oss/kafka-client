@@ -5,10 +5,13 @@ import java.util.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
+// Implements the main thread of the consumer port. Runs an input look which
+// reads messages from Elixir, and dispatches the messages to the poller.
 public class ConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
+    // Reading from the file descriptor 3, which is allocated by Elixir for input
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
       var poller = startPoller(args, ConsumerNotifier.start());
 
