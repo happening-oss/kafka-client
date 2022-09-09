@@ -54,7 +54,7 @@ final class Backpressure {
     resumedPartitions.clear();
   }
 
-  public void partitionsLost(Collection<TopicPartition> partitions) {
+  public void removePartitions(Collection<TopicPartition> partitions) {
     pausedPartitions.removeAll(partitions);
     resumedPartitions.removeAll(partitions);
   }

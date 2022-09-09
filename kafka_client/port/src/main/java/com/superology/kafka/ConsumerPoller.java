@@ -130,15 +130,15 @@ final class ConsumerPoller
 
   @Override
   public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
-    backpressure.partitionsLost(partitions);
     commits.partitionsRevoked(partitions);
+    backpressure.removePartitions(partitions);
     emitRebalanceEvent("unassigned", partitions);
   }
 
   @Override
   public void onPartitionsLost(Collection<TopicPartition> partitions) {
-    backpressure.partitionsLost(partitions);
     commits.partitionsLost(partitions);
+    backpressure.removePartitions(partitions);
     emitRebalanceEvent("unassigned", partitions);
   }
 

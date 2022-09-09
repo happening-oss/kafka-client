@@ -38,6 +38,7 @@ final class Commits {
   }
 
   public void partitionsRevoked(Collection<TopicPartition> partitions) {
+    // We're losing some partitions, but there's still time to commit the offsets.
     PartitionOffsets commits = new PartitionOffsets();
     for (var partition : partitions) {
       var offset = pendingCommits.remove(partition);
@@ -45,13 +46,17 @@ final class Commits {
         commits.put(partition, offset);
     }
 
+    // Sync committing, because we want to block the callback until we commit.
     try {
-      consumer.commitSync(commits, Duration.ofMillis(500));
+      consumer.commitSync(commits, Duration.ofSeconds(5));
     } catch (Exception e) {
+      // An exception here is not tragic, it just means we failed to commit during a
+      // rebalance. Therefore we'll just swallow and keep going.
     }
   }
 
   public void partitionsLost(Collection<TopicPartition> partitions) {
+    // We can't commit here since the partitions have already been lost.
     pendingCommits.keySet().removeAll(partitions);
   }
 
