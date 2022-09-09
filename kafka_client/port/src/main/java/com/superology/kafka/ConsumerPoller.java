@@ -13,7 +13,7 @@ final class ConsumerPoller
   private ConsumerNotifier notifier;
   private Properties pollerProps;
   private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
-  private Commits commits;
+  private ConsumerCommits commits;
   private ConsumerBackpressure backpressure;
 
   public static ConsumerPoller notifier(
@@ -49,7 +49,7 @@ final class ConsumerPoller
 
       var pollInterval = (int) pollerProps.getOrDefault("poll_interval", 10);
       var commitInterval = (int) pollerProps.getOrDefault("commmit_interval", 5000);
-      commits = new Commits(consumer, commitInterval);
+      commits = new ConsumerCommits(consumer, commitInterval);
       backpressure = new ConsumerBackpressure(consumer);
 
       while (true) {
@@ -77,8 +77,8 @@ final class ConsumerPoller
   }
 
   private void handleCommand(Consumer consumer, Object command) throws Exception {
-    if (command instanceof Ack) {
-      var ack = (Ack) command;
+    if (command instanceof ConsumerAck) {
+      var ack = (ConsumerAck) command;
       backpressure.recordProcessed(ack.partition());
       if (!isAnonymous())
         commits.add(ack.partition(), ack.offset());
@@ -210,8 +210,5 @@ final class Consumer extends KafkaConsumer<String, byte[]> {
   }
 }
 
-record Ack(TopicPartition partition, long offset) {
-}
-
-record CommittedRequest(TopicPartition partition) {
+record ConsumerAck(TopicPartition partition, long offset) {
 }

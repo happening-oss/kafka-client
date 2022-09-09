@@ -119,12 +119,12 @@ public class ConsumerPort {
     return topics;
   }
 
-  private static Ack decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
+  private static ConsumerAck decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
     var topic = new String(((OtpErlangBinary) ack.elementAt(1)).binaryValue());
     var partitionNo = ((OtpErlangLong) ack.elementAt(2)).intValue();
     var partition = new TopicPartition(topic, partitionNo);
     var offset = ((OtpErlangLong) ack.elementAt(3)).longValue();
-    return new Ack(partition, offset);
+    return new ConsumerAck(partition, offset);
   }
 
   private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {

@@ -5,13 +5,17 @@ import java.util.*;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 
-final class Commits {
+/*
+ * Responsible for committing offsets to Kafka. This class aggregates pending
+ * commits and periodically flushes them to Kafka.
+ */
+final class ConsumerCommits {
   PartitionOffsets pendingCommits = new PartitionOffsets();
   Consumer consumer;
   long commitIntervalNs;
   long lastCommit;
 
-  public Commits(Consumer consumer, long commitIntervalMs) {
+  public ConsumerCommits(Consumer consumer, long commitIntervalMs) {
     this.consumer = consumer;
     this.commitIntervalNs = java.time.Duration.ofMillis(commitIntervalMs).toNanos();
     this.lastCommit = System.nanoTime() - commitIntervalNs;
