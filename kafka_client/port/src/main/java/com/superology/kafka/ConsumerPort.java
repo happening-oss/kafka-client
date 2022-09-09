@@ -10,38 +10,57 @@ public class ConsumerPort {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
-      var consumerProps = decodeProperties(args[0]);
-      var topics = decodeTopics(args[1]);
-      var pollerProps = decodeProperties(args[2]);
       var output = ConsumerOutput.start();
-      var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, output);
+      var poller = startPoller(args, output);
 
       while (true) {
-        var length = readInt(input);
-        var messageBytes = readBytes(input, length);
-        var message = (OtpErlangTuple) otpDecode(messageBytes);
-
-        switch (message.elementAt(0).toString()) {
-          case "ack":
-            poller.addMessage(decodeAck(message));
-            break;
-
-          case "stop":
-            poller.addMessage("stop");
-            break;
-
-          case "committed_offsets":
-            poller.addMessage("committed_offsets");
-            break;
-        }
+        var message = readMessage(input);
+        handleMessage(poller, message);
       }
-    } catch (java.io.EOFException e) {
-      System.exit(0);
     } catch (Exception e) {
       System.err.println(e.getMessage());
       e.printStackTrace();
       System.exit(1);
     }
+  }
+
+  private static ConsumerPoller startPoller(String[] args, ConsumerOutput output)
+      throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
+    var consumerProps = decodeProperties(args[0]);
+    var topics = decodeTopics(args[1]);
+    var pollerProps = decodeProperties(args[2]);
+    var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, output);
+    return poller;
+  }
+
+  private static void handleMessage(ConsumerPoller poller, OtpErlangTuple message)
+      throws OtpErlangRangeException, Exception {
+    var tag = message.elementAt(0).toString();
+
+    switch (tag) {
+      case "ack":
+        poller.addMessage(decodeAck(message));
+        break;
+
+      case "stop":
+        poller.addMessage("stop");
+        break;
+
+      case "committed_offsets":
+        poller.addMessage("committed_offsets");
+        break;
+
+      default:
+        throw new Exception("unknown message " + tag);
+    }
+  }
+
+  private static OtpErlangTuple readMessage(DataInputStream input)
+      throws IOException, OtpErlangDecodeException {
+    var length = readInt(input);
+    var messageBytes = readBytes(input, length);
+    var message = (OtpErlangTuple) otpDecode(messageBytes);
+    return message;
   }
 
   private static int readInt(DataInputStream input)
@@ -65,35 +84,33 @@ public class ConsumerPort {
 
     for (var param : params.entrySet()) {
       var key = new String(((OtpErlangBinary) param.getKey()).binaryValue());
-      Object value = param.getValue();
-
-      if (value instanceof OtpErlangBinary)
-        value = new String(((OtpErlangBinary) value).binaryValue());
-      else if (value instanceof OtpErlangLong)
-        value = ((OtpErlangLong) value).intValue();
-      else if (value instanceof OtpErlangAtom) {
-        var atomValue = ((OtpErlangAtom) value).atomValue();
-        switch (atomValue) {
-          case "true":
-          case "false":
-            value = Boolean.parseBoolean(atomValue);
-            break;
-
-          case "nil":
-            value = null;
-            break;
-
-          default:
-            throw new Exception("unknown atom " + atomValue);
-        }
-      } else
-        throw new Exception("unknown type " + param.getValue().getClass().toString());
+      var value = otpObjectToJava(param.getValue());
 
       if (value != null)
         consumerProps.put(key, value);
     }
 
     return consumerProps;
+  }
+
+  private static Object otpObjectToJava(OtpErlangObject value) throws OtpErlangRangeException, Exception {
+    if (value instanceof OtpErlangBinary)
+      return new String(((OtpErlangBinary) value).binaryValue());
+    else if (value instanceof OtpErlangLong)
+      return ((OtpErlangLong) value).intValue();
+    else if (value instanceof OtpErlangAtom) {
+      var atomValue = ((OtpErlangAtom) value).atomValue();
+      switch (atomValue) {
+        case "true":
+        case "false":
+          return Boolean.parseBoolean(atomValue);
+
+        case "nil":
+          return null;
+      }
+    }
+
+    throw new Exception("error converting to java object " + value);
   }
 
   private static Collection<String> decodeTopics(String encoded) throws IOException, OtpErlangDecodeException {
