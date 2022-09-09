@@ -6,6 +6,9 @@ import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
+/*
+ * Runs the kafka poller loop in a separate thread, and dispatches the polled records to Elixir.
+ */
 final class ConsumerPoller
     implements Runnable, ConsumerRebalanceListener {
   private Properties consumerProps;
