@@ -1,51 +1,15 @@
 defmodule KafkaClient.Consumer do
   use Parent.GenServer
   require Logger
+  alias KafkaClient.Consumer.Port
 
-  def start_link(opts) do
-    servers = Keyword.fetch!(opts, :servers)
-    topics = Keyword.fetch!(opts, :topics)
-    group_id = Keyword.get(opts, :group_id)
-    handler = Keyword.fetch!(opts, :handler)
-    user_consumer_params = Keyword.get(opts, :consumer_params, %{})
-
-    poller_properties = %{
-      "poll_duration" => Keyword.get(opts, :poll_duration, 10),
-      "commit_interval" => Keyword.get(opts, :commit_interval, :timer.seconds(5))
-    }
-
-    consumer_params =
-      %{
-        "heartbeat.interval.ms" => 100,
-        "max.poll.interval.ms" => 1000,
-        "auto.offset.reset" => "earliest"
-      }
-      |> Map.merge(user_consumer_params)
-      # non-overridable params
-      |> Map.merge(%{
-        "bootstrap.servers" => Enum.join(servers, ","),
-        "group.id" => group_id,
-        "enable.auto.commit" => false,
-        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
-        "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer"
-      })
-
-    Parent.GenServer.start_link(
-      __MODULE__,
-      {consumer_params, topics, poller_properties, handler}
-    )
-  end
+  def start_link(opts), do: Parent.GenServer.start_link(__MODULE__, opts)
 
   @impl GenServer
-  def init({consumer_params, topics, poller_properties, handler}) do
-    state = %{
-      handler: handler,
-      port: nil,
-      port_args: port_args(consumer_params, topics, poller_properties),
-      end_offsets: nil
-    }
-
-    {:ok, open_port(state)}
+  def init(opts) do
+    handler = Keyword.fetch!(opts, :handler)
+    port = Port.open(opts)
+    {:ok, %{handler: handler, port: port, end_offsets: nil}}
   end
 
   @impl GenServer
@@ -67,17 +31,8 @@ defmodule KafkaClient.Consumer do
   end
 
   @impl GenServer
-  def terminate(_reason, %{port: port}) do
-    if port != nil do
-      Port.command(port, :erlang.term_to_binary({:stop}))
-
-      receive do
-        {^port, {:exit_status, _status}} -> :ok
-      after
-        :timer.seconds(5) -> :ok
-      end
-    end
-  end
+  def terminate(_reason, state),
+    do: if(state.port != nil, do: Port.close(state.port))
 
   @impl Parent.GenServer
   def handle_stopped_children(children, state) do
@@ -156,33 +111,6 @@ defmodule KafkaClient.Consumer do
     else
       state
     end
-  end
-
-  defp open_port(state) do
-    port =
-      Port.open(
-        {:spawn_executable, System.find_executable("java")},
-        [
-          :nouse_stdio,
-          :binary,
-          :exit_status,
-          packet: 4,
-          args: state.port_args
-        ]
-      )
-
-    %{state | port: port}
-  end
-
-  defp port_args(consumer_params, topics, poller_properties) do
-    [
-      "-cp",
-      "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
-      "com.superology.kafka.ConsumerPort",
-      consumer_params |> :erlang.term_to_binary() |> Base.encode64(),
-      topics |> :erlang.term_to_binary() |> Base.encode64(),
-      poller_properties |> :erlang.term_to_binary() |> Base.encode64()
-    ]
   end
 
   defp start_processor!(state, {topic, partition}, end_offset \\ nil) do

@@ -1,6 +1,7 @@
 defmodule KafkaClient.Consumer.Processor do
   use GenServer
   require Logger
+  alias KafkaClient.Consumer.Port
 
   def start_link(arg), do: GenServer.start_link(__MODULE__, arg)
 
@@ -43,10 +44,7 @@ defmodule KafkaClient.Consumer.Processor do
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    Port.command(
-      port,
-      :erlang.term_to_binary({:ack, topic, partition, offset})
-    )
+    Port.ack(port, topic, partition, offset)
 
     state =
       if end_offset != nil and offset + 1 >= end_offset do
