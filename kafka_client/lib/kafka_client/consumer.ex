@@ -17,12 +17,8 @@ defmodule KafkaClient.Consumer do
     do: handle_port_message(:erlang.binary_to_term(data), state)
 
   def handle_info({:caught_up, partition}, state) do
-    if state.end_offsets == nil do
-      {:noreply, state}
-    else
-      state = update_in(state.end_offsets, &MapSet.delete(&1, partition))
-      {:noreply, maybe_notify_caught_up(state)}
-    end
+    state = update_in(state.end_offsets, &MapSet.delete(&1, partition))
+    {:noreply, maybe_notify_caught_up(state)}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
@@ -42,7 +38,7 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_port_message({:assigned, partitions} = event, state) do
-    Enum.each(partitions, &start_processor!(state, &1))
+    start_processors(state, partitions)
     state.handler.(event)
     {:noreply, state}
   end
@@ -54,9 +50,10 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_port_message({:end_offsets, end_offsets}, state) do
+    start_processors(state, end_offsets)
+
     end_offsets =
       for {topic, partition, offset} <- end_offsets,
-          start_processor!(state, {topic, partition}, offset),
           offset > 0,
           into: MapSet.new(),
           do: {topic, partition}
@@ -113,17 +110,30 @@ defmodule KafkaClient.Consumer do
     end
   end
 
-  defp start_processor!(state, {topic, partition}, end_offset \\ nil) do
-    {:ok, pid} =
-      Parent.start_child(
-        {KafkaClient.Consumer.Processor,
-         {self(), topic, partition, end_offset, state.handler, state.port}},
-        id: {:processor, {topic, partition}},
-        restart: :temporary,
-        ephemeral?: true,
-        shutdown: :brutal_kill
-      )
+  defp start_processors(state, partitions) do
+    Enum.each(
+      partitions,
+      fn partition ->
+        {topic, partition, end_offset} =
+          with {topic, partition} <- partition, do: {topic, partition, nil}
 
-    pid
+        # if end_offset is 0, the topic is empty, so we'll send `nil` to the processor, to indicate
+        # that it doesn't need to emit the caught_up notification
+        end_offset = with 0 <- end_offset, do: nil
+
+        {:ok, _pid} =
+          Parent.start_child(
+            {KafkaClient.Consumer.Processor,
+             {self(), topic, partition, end_offset, state.handler, state.port}},
+            id: {:processor, {topic, partition}},
+            restart: :temporary,
+            ephemeral?: true,
+
+            # We want to kill the processor immediately, and stop any currently running processor,
+            # even if the processor is trapping exits.
+            shutdown: :brutal_kill
+          )
+      end
+    )
   end
 end
