@@ -1,38 +1,41 @@
 package com.superology.kafka;
 
 import java.util.*;
+
 import org.apache.kafka.common.*;
+import org.apache.kafka.clients.consumer.*;
 
 final class Backpressure {
   private Consumer consumer;
   private HashSet<TopicPartition> pausedPartitions = new HashSet<TopicPartition>();
   private HashSet<TopicPartition> resumedPartitions = new HashSet<TopicPartition>();
-  private HashMap<TopicPartition, BufferUsage> bufferUsages = new HashMap<TopicPartition, BufferUsage>();
+  private HashMap<TopicPartition, Queue> queues = new HashMap<TopicPartition, Queue>();
 
   public Backpressure(Consumer consumer) {
     this.consumer = consumer;
   }
 
-  public void recordProcessing(TopicPartition partition, int bytes) {
-    var bufferUsage = bufferUsages.get(partition);
-    if (bufferUsage == null) {
-      bufferUsage = new BufferUsage();
-      bufferUsages.put(partition, bufferUsage);
+  public void recordProcessing(ConsumerRecord<String, byte[]> record) {
+    var partition = new TopicPartition(record.topic(), record.partition());
+    var queue = queues.get(partition);
+    if (queue == null) {
+      queue = new Queue();
+      queues.put(partition, queue);
     }
 
-    bufferUsage.recordProcessing(bytes);
-    if (bufferUsage.shouldPause()) {
+    queue.recordProcessing(record);
+    if (queue.shouldPause()) {
       pausedPartitions.add(partition);
       resumedPartitions.remove(partition);
     }
   }
 
   public void recordProcessed(TopicPartition partition) {
-    var bufferUsage = bufferUsages.get(partition);
-    if (bufferUsage != null) {
-      bufferUsage.recordProcessed();
+    var queue = queues.get(partition);
+    if (queue != null) {
+      queue.recordProcessed();
 
-      if (bufferUsage.shouldResume()) {
+      if (queue.shouldResume()) {
         pausedPartitions.remove(partition);
         resumedPartitions.add(partition);
       }
@@ -40,7 +43,7 @@ final class Backpressure {
   }
 
   public void flush() {
-    bufferUsages.keySet().retainAll(consumer.assignment());
+    queues.keySet().retainAll(consumer.assignment());
 
     pausedPartitions.retainAll(consumer.assignment());
     consumer.pause(pausedPartitions);
@@ -55,35 +58,36 @@ final class Backpressure {
     pausedPartitions.removeAll(partitions);
     resumedPartitions.removeAll(partitions);
   }
-}
 
-final class BufferUsage {
-  private LinkedList<Integer> messageSizes = new LinkedList<>();
-  private int totalBytes = 0;
+  final class Queue {
+    private LinkedList<Integer> messageSizes = new LinkedList<>();
+    private int totalBytes = 0;
 
-  public boolean isEmpty() {
-    return numMessages() == 0;
-  }
+    public boolean isEmpty() {
+      return numMessages() == 0;
+    }
 
-  public void recordProcessing(int messageSize) {
-    messageSizes.add(messageSize);
-    totalBytes += messageSize;
-  }
+    public void recordProcessing(ConsumerRecord<String, byte[]> record) {
+      var messageSize = record.value().length;
+      messageSizes.add(messageSize);
+      totalBytes += messageSize;
+    }
 
-  public void recordProcessed() {
-    var messageSize = messageSizes.remove();
-    totalBytes -= messageSize;
-  }
+    public void recordProcessed() {
+      var messageSize = messageSizes.remove();
+      totalBytes -= messageSize;
+    }
 
-  public boolean shouldPause() {
-    return (numMessages() >= 2 && (totalBytes >= 1000000 || numMessages() >= 1000));
-  }
+    public boolean shouldPause() {
+      return (numMessages() >= 2 && (totalBytes >= 1000000 || numMessages() >= 1000));
+    }
 
-  public boolean shouldResume() {
-    return (numMessages() < 2 || (totalBytes <= 500000 && numMessages() <= 500));
-  }
+    public boolean shouldResume() {
+      return (numMessages() < 2 || (totalBytes <= 500000 && numMessages() <= 500));
+    }
 
-  private int numMessages() {
-    return messageSizes.size();
+    private int numMessages() {
+      return messageSizes.size();
+    }
   }
 }

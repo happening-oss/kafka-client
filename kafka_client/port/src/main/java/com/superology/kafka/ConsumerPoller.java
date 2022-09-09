@@ -64,10 +64,7 @@ final class ConsumerPoller
 
         for (var record : records) {
           writeToOutput(recordToOtp(record));
-
-          backpressure.recordProcessing(
-              new TopicPartition(record.topic(), record.partition()),
-              record.value().length);
+          backpressure.recordProcessing(record);
         }
       }
     } catch (Exception e) {
