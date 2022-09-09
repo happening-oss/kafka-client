@@ -73,14 +73,24 @@ public class ConsumerPort {
         value = ((OtpErlangLong) value).intValue();
       else if (value instanceof OtpErlangAtom) {
         var atomValue = ((OtpErlangAtom) value).atomValue();
-        if (atomValue.equals("true"))
-          value = true;
-        else if (atomValue.equals("false"))
-          value = false;
+        switch (atomValue) {
+          case "true":
+          case "false":
+            value = Boolean.parseBoolean(atomValue);
+            break;
+
+          case "nil":
+            value = null;
+            break;
+
+          default:
+            throw new Exception("unknown atom " + atomValue);
+        }
       } else
         throw new Exception("unknown type " + param.getValue().getClass().toString());
 
-      consumerProps.put(key, value);
+      if (value != null)
+        consumerProps.put(key, value);
     }
 
     return consumerProps;
