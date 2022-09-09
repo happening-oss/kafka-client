@@ -4,9 +4,9 @@ import java.io.*;
 import java.util.concurrent.*;
 import com.ericsson.otp.erlang.*;
 
-final class ConsumerOutput implements Runnable {
-  public static ConsumerOutput start() {
-    var output = new ConsumerOutput();
+final class ConsumerNotifier implements Runnable {
+  public static ConsumerNotifier start() {
+    var output = new ConsumerNotifier();
 
     var consumerThread = new Thread(output);
     consumerThread.setDaemon(true);
@@ -15,22 +15,21 @@ final class ConsumerOutput implements Runnable {
     return output;
   }
 
-  private BlockingQueue<Message> messages;
+  private BlockingQueue<Notification> notifications;
 
-  private ConsumerOutput() {
-    messages = new LinkedBlockingQueue<Message>();
+  private ConsumerNotifier() {
+    notifications = new LinkedBlockingQueue<Notification>();
   }
 
-  public void write(OtpErlangObject payload)
-      throws InterruptedException {
-    messages.put(new Message(payload, System.nanoTime()));
+  public void emit(OtpErlangObject notification) throws InterruptedException {
+    notifications.put(new Notification(notification, System.nanoTime()));
   }
 
   @Override
   public void run() {
     try (var output = new DataOutputStream(new FileOutputStream("/dev/fd/4"))) {
       while (true) {
-        var message = this.messages.take();
+        var message = this.notifications.take();
 
         var sendingAt = System.nanoTime();
         write(output, message.payload());
@@ -67,7 +66,7 @@ final class ConsumerOutput implements Runnable {
       output.write(bytes);
     }
   }
-}
 
-record Message(OtpErlangObject payload, Long startTime) {
+  record Notification(OtpErlangObject payload, Long startTime) {
+  }
 }

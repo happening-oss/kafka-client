@@ -10,18 +10,18 @@ final class ConsumerPoller
     implements Runnable, ConsumerRebalanceListener {
   private Properties consumerProps;
   private Collection<String> topics;
-  private ConsumerOutput output;
+  private ConsumerNotifier notifier;
   private Properties pollerProps;
-  private BlockingQueue<Object> messages = new LinkedBlockingQueue<>();
+  private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
   private Commits commits;
   private Backpressure backpressure;
 
-  public static ConsumerPoller start(
+  public static ConsumerPoller notifier(
       Properties consumerProps,
       Collection<String> topics,
       Properties pollerProps,
-      ConsumerOutput output) {
-    var poller = new ConsumerPoller(consumerProps, topics, pollerProps, output);
+      ConsumerNotifier notifier) {
+    var poller = new ConsumerPoller(consumerProps, topics, pollerProps, notifier);
 
     // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(poller);
@@ -35,10 +35,10 @@ final class ConsumerPoller
       Properties consumerProps,
       Collection<String> topics,
       Properties pollerProps,
-      ConsumerOutput output) {
+      ConsumerNotifier notifier) {
     this.consumerProps = consumerProps;
     this.topics = topics;
-    this.output = output;
+    this.notifier = notifier;
     this.pollerProps = pollerProps;
   }
 
@@ -53,9 +53,11 @@ final class ConsumerPoller
       backpressure = new Backpressure(consumer);
 
       while (true) {
-        for (var message : messages())
-          handleMessage(consumer, message);
+        // commands issued by Elixir, such as ack or stop
+        for (var command : commands())
+          handleCommand(consumer, command);
 
+        // flushing after all commands are handled
         backpressure.flush();
         if (!isAnonymous())
           commits.flush(false);
@@ -63,7 +65,7 @@ final class ConsumerPoller
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
         for (var record : records) {
-          writeToOutput(recordToOtp(record));
+          notifyElixir(recordToOtp(record));
           backpressure.recordProcessing(record);
         }
       }
@@ -74,26 +76,26 @@ final class ConsumerPoller
     }
   }
 
-  private void handleMessage(Consumer consumer, Object message) throws Exception {
-    if (message instanceof Ack) {
-      var ack = (Ack) message;
+  private void handleCommand(Consumer consumer, Object command) throws Exception {
+    if (command instanceof Ack) {
+      var ack = (Ack) command;
       backpressure.recordProcessed(ack.partition());
       if (!isAnonymous())
         commits.add(ack.partition(), ack.offset());
-    } else if (message.equals("stop")) {
+    } else if (command.equals("stop")) {
       if (!isAnonymous())
         commits.flush(true);
 
       consumer.close();
       System.exit(0);
-    } else if (message.equals("committed_offsets"))
-      output.write(committedOffsetsToOtp(consumer.committed(consumer.assignment())));
+    } else if (command.equals("committed_offsets"))
+      notifyElixir(committedOffsetsToOtp(consumer.committed(consumer.assignment())));
     else
-      throw new Exception("unknown message " + message);
+      throw new Exception("unknown command " + command);
   }
 
-  public void addMessage(Object message) {
-    messages.add(message);
+  public void addCommand(Object command) {
+    commands.add(command);
   }
 
   private void startConsuming(Consumer consumer) throws InterruptedException {
@@ -105,7 +107,7 @@ final class ConsumerPoller
         }
       }
       consumer.assign(allPartitions);
-      output.write(endOffsetsToOtp(consumer.endOffsets(allPartitions)));
+      notifier.emit(endOffsetsToOtp(consumer.endOffsets(allPartitions)));
 
     } else
       consumer.subscribe(topics, this);
@@ -115,9 +117,9 @@ final class ConsumerPoller
     return consumerProps.getProperty("group.id") == null;
   }
 
-  private List<Object> messages() {
+  private List<Object> commands() {
     var result = new ArrayList<Object>();
-    messages.drainTo(result);
+    commands.drainTo(result);
     return result;
   }
 
@@ -141,12 +143,12 @@ final class ConsumerPoller
   }
 
   private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
-    writeToOutput(new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom(event), toErlangList(partitions) }));
+    notifyElixir(new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom(event), toErlangList(partitions) }));
   }
 
-  private void writeToOutput(OtpErlangObject message) {
+  private void notifyElixir(OtpErlangObject payload) {
     try {
-      output.write(message);
+      notifier.emit(payload);
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
     }

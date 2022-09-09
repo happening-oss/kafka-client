@@ -10,12 +10,11 @@ public class ConsumerPort {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
-      var output = ConsumerOutput.start();
-      var poller = startPoller(args, output);
+      var poller = startPoller(args, ConsumerNotifier.start());
 
       while (true) {
-        var message = readMessage(input);
-        handleMessage(poller, message);
+        var command = nextCommand(input);
+        handleCommand(poller, command);
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());
@@ -24,43 +23,42 @@ public class ConsumerPort {
     }
   }
 
-  private static ConsumerPoller startPoller(String[] args, ConsumerOutput output)
+  private static ConsumerPoller startPoller(String[] args, ConsumerNotifier notifier)
       throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
     var consumerProps = decodeProperties(args[0]);
     var topics = decodeTopics(args[1]);
     var pollerProps = decodeProperties(args[2]);
-    var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, output);
+    var poller = ConsumerPoller.notifier(consumerProps, topics, pollerProps, notifier);
     return poller;
   }
 
-  private static void handleMessage(ConsumerPoller poller, OtpErlangTuple message)
+  private static void handleCommand(ConsumerPoller poller, OtpErlangTuple command)
       throws OtpErlangRangeException, Exception {
-    var tag = message.elementAt(0).toString();
+    var tag = command.elementAt(0).toString();
 
     switch (tag) {
       case "ack":
-        poller.addMessage(decodeAck(message));
+        poller.addCommand(decodeAck(command));
         break;
 
       case "stop":
-        poller.addMessage("stop");
+        poller.addCommand("stop");
         break;
 
       case "committed_offsets":
-        poller.addMessage("committed_offsets");
+        poller.addCommand("committed_offsets");
         break;
 
       default:
-        throw new Exception("unknown message " + tag);
+        throw new Exception("unknown command " + tag);
     }
   }
 
-  private static OtpErlangTuple readMessage(DataInputStream input)
+  private static OtpErlangTuple nextCommand(DataInputStream input)
       throws IOException, OtpErlangDecodeException {
     var length = readInt(input);
-    var messageBytes = readBytes(input, length);
-    var message = (OtpErlangTuple) otpDecode(messageBytes);
-    return message;
+    var bytes = readBytes(input, length);
+    return (OtpErlangTuple) otpDecode(bytes);
   }
 
   private static int readInt(DataInputStream input)
@@ -121,11 +119,11 @@ public class ConsumerPort {
     return topics;
   }
 
-  private static Ack decodeAck(OtpErlangTuple message) throws OtpErlangRangeException {
-    var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
-    var partitionNo = ((OtpErlangLong) message.elementAt(2)).intValue();
+  private static Ack decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
+    var topic = new String(((OtpErlangBinary) ack.elementAt(1)).binaryValue());
+    var partitionNo = ((OtpErlangLong) ack.elementAt(2)).intValue();
     var partition = new TopicPartition(topic, partitionNo);
-    var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
+    var offset = ((OtpErlangLong) ack.elementAt(3)).longValue();
     return new Ack(partition, offset);
   }
 
