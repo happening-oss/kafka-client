@@ -1,16 +1,15 @@
 package com.superology.kafka;
 
 import java.util.*;
-import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 
 final class Backpressure {
-  private KafkaConsumer<String, byte[]> consumer;
+  private Consumer consumer;
   private HashSet<TopicPartition> pausedPartitions = new HashSet<TopicPartition>();
   private HashSet<TopicPartition> resumedPartitions = new HashSet<TopicPartition>();
   private HashMap<TopicPartition, BufferUsage> bufferUsages = new HashMap<TopicPartition, BufferUsage>();
 
-  public Backpressure(KafkaConsumer<String, byte[]> consumer) {
+  public Backpressure(Consumer consumer) {
     this.consumer = consumer;
   }
 

@@ -23,6 +23,7 @@ final class ConsumerPoller
       ConsumerOutput output) {
     var poller = new ConsumerPoller(consumerProps, topics, pollerProps, output);
 
+    // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(poller);
     consumerThread.setDaemon(true);
     consumerThread.start();
@@ -43,7 +44,7 @@ final class ConsumerPoller
 
   @Override
   public void run() {
-    try (var consumer = new KafkaConsumer<String, byte[]>(consumerProps)) {
+    try (var consumer = new Consumer(consumerProps)) {
       startConsuming(consumer);
 
       var pollInterval = (int) pollerProps.getOrDefault("poll_interval", 10);
@@ -52,21 +53,8 @@ final class ConsumerPoller
       backpressure = new Backpressure(consumer);
 
       while (true) {
-        for (var message : messages()) {
-          if (message instanceof Ack) {
-            var ack = (Ack) message;
-            backpressure.recordProcessed(ack.partition());
-            if (!isAnonymous())
-              commits.add(ack.partition(), ack.offset());
-          } else if (message.equals("stop")) {
-            if (!isAnonymous())
-              commits.flush(true);
-
-            consumer.close();
-            System.exit(0);
-          } else if (message.equals("committed_offsets"))
-            output.write(committedOffsetsToOtp(consumer.committed(consumer.assignment())));
-        }
+        for (var message : messages())
+          handleMessage(consumer, message);
 
         backpressure.flush();
         if (!isAnonymous())
@@ -89,11 +77,29 @@ final class ConsumerPoller
     }
   }
 
+  private void handleMessage(Consumer consumer, Object message) throws Exception {
+    if (message instanceof Ack) {
+      var ack = (Ack) message;
+      backpressure.recordProcessed(ack.partition());
+      if (!isAnonymous())
+        commits.add(ack.partition(), ack.offset());
+    } else if (message.equals("stop")) {
+      if (!isAnonymous())
+        commits.flush(true);
+
+      consumer.close();
+      System.exit(0);
+    } else if (message.equals("committed_offsets"))
+      output.write(committedOffsetsToOtp(consumer.committed(consumer.assignment())));
+    else
+      throw new Exception("unknown message " + message);
+  }
+
   public void addMessage(Object message) {
     messages.add(message);
   }
 
-  private void startConsuming(KafkaConsumer<String, byte[]> consumer) throws InterruptedException {
+  private void startConsuming(Consumer consumer) throws InterruptedException {
     if (isAnonymous()) {
       var allPartitions = new ArrayList<TopicPartition>();
       for (var topic : topics) {
@@ -196,6 +202,12 @@ final class ConsumerPoller
     return new OtpErlangTuple(new OtpErlangObject[] {
         new OtpErlangAtom("end_offsets"),
         new OtpErlangList(elements) });
+  }
+}
+
+final class Consumer extends KafkaConsumer<String, byte[]> {
+  public Consumer(Properties properties) {
+    super(properties);
   }
 }
 

@@ -6,12 +6,12 @@ import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 
 final class Commits {
-  HashMap<TopicPartition, OffsetAndMetadata> pendingCommits = new HashMap<TopicPartition, OffsetAndMetadata>();
-  KafkaConsumer<String, byte[]> consumer;
+  PartitionOffsets pendingCommits = new PartitionOffsets();
+  Consumer consumer;
   long commitIntervalNs;
   long lastCommit;
 
-  public Commits(KafkaConsumer<String, byte[]> consumer, long commitIntervalMs) {
+  public Commits(Consumer consumer, long commitIntervalMs) {
     this.consumer = consumer;
     this.commitIntervalNs = java.time.Duration.ofMillis(commitIntervalMs).toNanos();
     this.lastCommit = System.nanoTime() - commitIntervalNs;
@@ -38,7 +38,7 @@ final class Commits {
   }
 
   public void partitionsRevoked(Collection<TopicPartition> partitions) {
-    HashMap<TopicPartition, OffsetAndMetadata> commits = new HashMap<TopicPartition, OffsetAndMetadata>();
+    PartitionOffsets commits = new PartitionOffsets();
     for (var partition : partitions) {
       var offset = pendingCommits.remove(partition);
       if (offset != null)
@@ -53,5 +53,11 @@ final class Commits {
 
   public void partitionsLost(Collection<TopicPartition> partitions) {
     pendingCommits.keySet().removeAll(partitions);
+  }
+
+  final class PartitionOffsets extends HashMap<TopicPartition, OffsetAndMetadata> {
+    public PartitionOffsets() {
+      super();
+    }
   }
 }
