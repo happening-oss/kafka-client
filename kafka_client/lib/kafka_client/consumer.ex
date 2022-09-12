@@ -1,55 +1,47 @@
 defmodule KafkaClient.Consumer do
   use Parent.GenServer
   require Logger
-  alias KafkaClient.Consumer.Port
+  alias KafkaClient.Consumer.Core
 
   def start_link(opts), do: Parent.GenServer.start_link(__MODULE__, opts)
 
   @impl GenServer
   def init(opts) do
-    handler = Keyword.fetch!(opts, :handler)
-    port = Port.open(opts)
-    {:ok, %{handler: handler, port: port, end_offsets: nil}}
+    {handler, opts} = Keyword.pop!(opts, :handler)
+
+    {:ok, _subscriber} =
+      Parent.start_child(
+        {Core, Keyword.put(opts, :subscriber, self())},
+        id: :core,
+        restart: :temporary,
+        ephemeral?: true
+      )
+
+    {:ok, %{handler: handler, port: nil, end_offsets: nil}}
   end
 
   @impl GenServer
-  def handle_info({port, {:data, data}}, %{port: port} = state),
-    do: handle_port_message(:erlang.binary_to_term(data), state)
+  def handle_info({:port_started, port}, state),
+    do: {:noreply, %{state | port: port}}
 
   def handle_info({:caught_up, partition}, state) do
     state = update_in(state.end_offsets, &MapSet.delete(&1, partition))
     {:noreply, maybe_notify_caught_up(state)}
   end
 
-  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.error("port exited with status #{status}")
-    {:stop, :port_crash, %{state | port: nil}}
-  end
-
-  @impl GenServer
-  def terminate(_reason, state),
-    do: if(state.port != nil, do: Port.close(state.port))
-
-  @impl Parent.GenServer
-  def handle_stopped_children(children, state) do
-    if Enum.any?(Map.keys(children), &match?({:processor, {_topic, _partition}}, &1)),
-      do: {:stop, :processor_crashed, state},
-      else: {:noreply, state}
-  end
-
-  defp handle_port_message({:assigned, partitions} = event, state) do
+  def handle_info({:assigned, partitions} = event, state) do
     start_processors(state, partitions)
     state.handler.(event)
     {:noreply, state}
   end
 
-  defp handle_port_message({:unassigned, partitions} = event, state) do
+  def handle_info({:unassigned, partitions} = event, state) do
     Enum.each(partitions, &Parent.shutdown_child({:processor, &1}))
     state.handler.(event)
     {:noreply, state}
   end
 
-  defp handle_port_message({:end_offsets, end_offsets}, state) do
+  def handle_info({:end_offsets, end_offsets}, state) do
     start_processors(state, end_offsets)
 
     end_offsets =
@@ -61,10 +53,10 @@ defmodule KafkaClient.Consumer do
     {:noreply, maybe_notify_caught_up(%{state | end_offsets: end_offsets})}
   end
 
-  defp handle_port_message(
-         {:record, topic, partition, offset, timestamp, payload},
-         state
-       ) do
+  def handle_info(
+        {:record, topic, partition, offset, timestamp, payload},
+        state
+      ) do
     now = System.monotonic_time()
 
     :telemetry.execute(
@@ -79,7 +71,7 @@ defmodule KafkaClient.Consumer do
     {:noreply, state}
   end
 
-  defp handle_port_message({:metrics, transfer_time, duration}, state) do
+  def handle_info({:metrics, transfer_time, duration}, state) do
     transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
     duration = System.convert_time_unit(duration, :nanosecond, :native)
 
@@ -96,9 +88,15 @@ defmodule KafkaClient.Consumer do
     {:noreply, state}
   end
 
-  defp handle_port_message({:committed, _offsets} = event, state) do
+  def handle_info({:committed, _offsets} = event, state) do
     state.handler.(event)
     {:noreply, state}
+  end
+
+  @impl Parent.GenServer
+  def handle_stopped_children(children, state) do
+    crashed_children = Map.keys(children)
+    {:stop, {:children_crashed, crashed_children}, state}
   end
 
   defp maybe_notify_caught_up(state) do
