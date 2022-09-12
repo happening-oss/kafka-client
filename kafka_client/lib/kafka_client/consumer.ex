@@ -41,20 +41,17 @@ defmodule KafkaClient.Consumer do
     {:noreply, state}
   end
 
-  def handle_info(
-        {:record, topic, partition, offset, timestamp, payload},
-        state
-      ) do
+  def handle_info({:record, record}, state) do
     now = System.monotonic_time()
 
     :telemetry.execute(
       [:kafka_client, :consumer, :record, :queue, :start],
       %{system_time: System.system_time(), monotonic_time: now},
-      %{topic: topic, partition: partition, offset: offset, timestamp: timestamp}
+      Map.take(record, ~w/topic partition offset timestamp/a)
     )
 
-    {:ok, pid} = Parent.child_pid({:processor, {topic, partition}})
-    KafkaClient.Consumer.Processor.handle_record(pid, offset, timestamp, payload, now)
+    {:ok, pid} = Parent.child_pid({:processor, {record.topic, record.partition}})
+    KafkaClient.Consumer.Processor.handle_record(pid, record, now)
 
     {:noreply, state}
   end
@@ -91,11 +88,9 @@ defmodule KafkaClient.Consumer do
     Enum.each(
       partitions,
       fn {topic, partition} ->
-        arg = %{topic: topic, partition: partition, handler: state.handler, port: state.port}
-
         {:ok, _pid} =
           Parent.start_child(
-            {KafkaClient.Consumer.Processor, arg},
+            {KafkaClient.Consumer.Processor, state.handler},
             id: {:processor, {topic, partition}},
             restart: :temporary,
             ephemeral?: true,

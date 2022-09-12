@@ -3,33 +3,20 @@ defmodule KafkaClient.Consumer.Processor do
   require Logger
   alias KafkaClient.Consumer.Port
 
-  def start_link(arg), do: GenServer.start_link(__MODULE__, arg)
+  def start_link(handler), do: GenServer.start_link(__MODULE__, handler)
 
-  def handle_record(pid, offset, timestamp, payload, enqueued_at),
-    do: GenServer.cast(pid, {:record, offset, timestamp, payload, enqueued_at})
-
-  @impl GenServer
-  def init(arg),
-    do: {:ok, arg}
+  def handle_record(pid, record, enqueued_at),
+    do: GenServer.cast(pid, {:record, record, enqueued_at})
 
   @impl GenServer
-  def handle_cast({:record, offset, timestamp, payload, enqueued_at}, state) do
+  def init(handler),
+    do: {:ok, handler}
+
+  @impl GenServer
+  def handle_cast({:record, record, enqueued_at}, handler) do
     now = System.monotonic_time()
 
-    record = %{
-      topic: state.topic,
-      partition: state.partition,
-      offset: offset,
-      timestamp: timestamp,
-      payload: payload
-    }
-
-    telemetry_meta = %{
-      topic: state.topic,
-      partition: state.partition,
-      offset: offset,
-      timestamp: timestamp
-    }
+    telemetry_meta = Map.take(record, ~w/topic partition offset timestamp/a)
 
     :telemetry.execute(
       [:kafka_client, :consumer, :record, :queue, :stop],
@@ -41,15 +28,15 @@ defmodule KafkaClient.Consumer.Processor do
       :telemetry.span(
         [:kafka_client, :consumer, :record, :handler],
         %{},
-        fn -> {state.handler.({:record, record}), telemetry_meta} end
+        fn -> {handler.({:record, record}), telemetry_meta} end
       )
     catch
       kind, payload when kind != :exit ->
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    Port.ack(state.port, state.topic, state.partition, offset)
+    Port.ack(record.port, record.topic, record.partition, record.offset)
 
-    {:noreply, state}
+    {:noreply, handler}
   end
 end

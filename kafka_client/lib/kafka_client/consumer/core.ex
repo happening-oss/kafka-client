@@ -16,7 +16,23 @@ defmodule KafkaClient.Consumer.Core do
 
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    send(state.subscriber, :erlang.binary_to_term(data))
+    decoded = :erlang.binary_to_term(data)
+
+    message =
+      with {:record, topic, partition, offset, timestamp, payload} <- decoded do
+        record = %{
+          topic: topic,
+          partition: partition,
+          offset: offset,
+          timestamp: timestamp,
+          payload: payload,
+          port: port
+        }
+
+        {:record, record}
+      end
+
+    send(state.subscriber, message)
     {:noreply, state}
   end
 
