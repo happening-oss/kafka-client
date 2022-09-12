@@ -1,7 +1,7 @@
 defmodule KafkaClient.Consumer.Processor do
   use GenServer
   require Logger
-  alias KafkaClient.Consumer.Port
+  alias KafkaClient.Consumer.Core
 
   def start_link(handler), do: GenServer.start_link(__MODULE__, handler)
 
@@ -35,7 +35,7 @@ defmodule KafkaClient.Consumer.Processor do
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    Port.ack(record.port, record.topic, record.partition, record.offset)
+    Core.ack(record)
 
     {:noreply, handler}
   end

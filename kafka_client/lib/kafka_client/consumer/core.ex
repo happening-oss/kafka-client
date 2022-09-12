@@ -5,6 +5,9 @@ defmodule KafkaClient.Consumer.Core do
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
+  def ack(record),
+    do: Port.ack(record.port, record.topic, record.partition, record.offset)
+
   @impl GenServer
   def init(opts) do
     Process.flag(:trap_exit, true)
