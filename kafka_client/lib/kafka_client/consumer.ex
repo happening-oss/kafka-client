@@ -42,34 +42,8 @@ defmodule KafkaClient.Consumer do
   end
 
   def handle_info({:record, record}, state) do
-    now = System.monotonic_time()
-
-    :telemetry.execute(
-      [:kafka_client, :consumer, :record, :queue, :start],
-      %{system_time: System.system_time(), monotonic_time: now},
-      Map.take(record, ~w/topic partition offset timestamp/a)
-    )
-
     {:ok, pid} = Parent.child_pid({:processor, {record.topic, record.partition}})
-    KafkaClient.Consumer.Processor.handle_record(pid, record, now)
-
-    {:noreply, state}
-  end
-
-  def handle_info({:metrics, transfer_time, duration}, state) do
-    transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
-    duration = System.convert_time_unit(duration, :nanosecond, :native)
-
-    :telemetry.execute(
-      [:kafka_client, :consumer, :port, :stop],
-      %{
-        system_time: System.system_time(),
-        transfer_time: transfer_time,
-        duration: duration
-      },
-      %{}
-    )
-
+    KafkaClient.Consumer.Processor.handle_record(pid, record)
     {:noreply, state}
   end
 

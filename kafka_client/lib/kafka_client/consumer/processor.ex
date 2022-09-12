@@ -5,30 +5,22 @@ defmodule KafkaClient.Consumer.Processor do
 
   def start_link(handler), do: GenServer.start_link(__MODULE__, handler)
 
-  def handle_record(pid, record, enqueued_at),
-    do: GenServer.cast(pid, {:record, record, enqueued_at})
+  def handle_record(pid, record),
+    do: GenServer.cast(pid, {:record, record})
 
   @impl GenServer
   def init(handler),
     do: {:ok, handler}
 
   @impl GenServer
-  def handle_cast({:record, record, enqueued_at}, handler) do
-    now = System.monotonic_time()
-
-    telemetry_meta = Map.take(record, ~w/topic partition offset timestamp/a)
-
-    :telemetry.execute(
-      [:kafka_client, :consumer, :record, :queue, :stop],
-      %{system_time: System.system_time(), monotonic_time: now, duration: now - enqueued_at},
-      telemetry_meta
-    )
+  def handle_cast({:record, record}, handler) do
+    Core.started_processing(record)
 
     try do
       :telemetry.span(
         [:kafka_client, :consumer, :record, :handler],
         %{},
-        fn -> {handler.({:record, record}), telemetry_meta} end
+        fn -> {handler.({:record, record}), Core.telemetry_meta(record)} end
       )
     catch
       kind, payload when kind != :exit ->

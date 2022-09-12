@@ -34,7 +34,7 @@ defmodule KafkaClient.Test.Helper do
       handler_id,
       [:kafka_client, :consumer, :record, :queue, :start],
       fn _name, _measurements, meta, _config ->
-        if self() == consumer_pid, do: send(test_pid, {:polled, meta})
+        if hd(Process.get(:"$ancestors")) == consumer_pid, do: send(test_pid, {:polled, meta})
       end,
       nil
     )
