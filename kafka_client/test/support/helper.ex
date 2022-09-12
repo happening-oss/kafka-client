@@ -142,14 +142,15 @@ defmodule KafkaClient.Test.Helper do
     record
   end
 
-  def port(consumer), do: state(consumer).port
+  def port(consumer) do
+    {:ok, core_pid} = Parent.Client.child_pid(consumer.pid, :core)
+    :sys.get_state(core_pid).port
+  end
 
   def os_pid(port) do
     {:os_pid, os_pid} = Port.info(port, :os_pid)
     os_pid
   end
-
-  defp state(consumer), do: :sys.get_state(consumer.pid)
 
   defp brokers, do: [{"localhost", 9092}]
 end

@@ -29,7 +29,6 @@ defmodule KafkaClient.Consumer.Core do
     Process.flag(:trap_exit, true)
     subscriber = Keyword.fetch!(opts, :subscriber)
     port = Port.open(opts)
-    send(subscriber, {:port_started, port})
     {:ok, %{port: port, subscriber: subscriber}}
   end
 

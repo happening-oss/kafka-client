@@ -17,54 +17,51 @@ defmodule KafkaClient.Consumer do
         ephemeral?: true
       )
 
-    {:ok, %{handler: handler, port: nil}}
+    {:ok, handler}
   end
 
   @impl GenServer
-  def handle_info({:port_started, port}, state),
-    do: {:noreply, %{state | port: port}}
-
-  def handle_info(:caught_up, state) do
-    state.handler.(:caught_up)
-    {:noreply, state}
+  def handle_info(:caught_up, handler) do
+    handler.(:caught_up)
+    {:noreply, handler}
   end
 
-  def handle_info({:assigned, partitions} = event, state) do
-    start_processors(state, partitions)
-    state.handler.(event)
-    {:noreply, state}
+  def handle_info({:assigned, partitions} = event, handler) do
+    start_processors(handler, partitions)
+    handler.(event)
+    {:noreply, handler}
   end
 
-  def handle_info({:unassigned, partitions} = event, state) do
+  def handle_info({:unassigned, partitions} = event, handler) do
     Enum.each(partitions, &Parent.shutdown_child({:processor, &1}))
-    state.handler.(event)
-    {:noreply, state}
+    handler.(event)
+    {:noreply, handler}
   end
 
-  def handle_info({:record, record}, state) do
+  def handle_info({:record, record}, handler) do
     {:ok, pid} = Parent.child_pid({:processor, {record.topic, record.partition}})
     KafkaClient.Consumer.Processor.handle_record(pid, record)
-    {:noreply, state}
+    {:noreply, handler}
   end
 
-  def handle_info({:committed, _offsets} = event, state) do
-    state.handler.(event)
-    {:noreply, state}
+  def handle_info({:committed, _offsets} = event, handler) do
+    handler.(event)
+    {:noreply, handler}
   end
 
   @impl Parent.GenServer
-  def handle_stopped_children(children, state) do
+  def handle_stopped_children(children, handler) do
     crashed_children = Map.keys(children)
-    {:stop, {:children_crashed, crashed_children}, state}
+    {:stop, {:children_crashed, crashed_children}, handler}
   end
 
-  defp start_processors(state, partitions) do
+  defp start_processors(handler, partitions) do
     Enum.each(
       partitions,
       fn {topic, partition} ->
         {:ok, _pid} =
           Parent.start_child(
-            {KafkaClient.Consumer.Processor, state.handler},
+            {KafkaClient.Consumer.Processor, handler},
             id: {:processor, {topic, partition}},
             restart: :temporary,
             ephemeral?: true,
