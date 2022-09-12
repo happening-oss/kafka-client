@@ -1,7 +1,7 @@
 defmodule KafkaClient.Consumer do
   use Parent.GenServer
   require Logger
-  alias KafkaClient.Consumer.Core
+  alias KafkaClient.Consumer.Poller
 
   def start_link(opts), do: Parent.GenServer.start_link(__MODULE__, opts)
 
@@ -11,8 +11,8 @@ defmodule KafkaClient.Consumer do
 
     {:ok, _subscriber} =
       Parent.start_child(
-        {Core, Keyword.put(opts, :subscriber, self())},
-        id: :core,
+        {Poller, Keyword.put(opts, :subscriber, self())},
+        id: :poller,
         restart: :temporary,
         ephemeral?: true
       )

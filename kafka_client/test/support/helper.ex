@@ -143,8 +143,8 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def port(consumer) do
-    {:ok, core_pid} = Parent.Client.child_pid(consumer.pid, :core)
-    :sys.get_state(core_pid).port
+    {:ok, poller_pid} = Parent.Client.child_pid(consumer.pid, :poller)
+    :sys.get_state(poller_pid).port
   end
 
   def os_pid(port) do

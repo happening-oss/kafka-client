@@ -1,4 +1,4 @@
-defmodule KafkaClient.Consumer.Core do
+defmodule KafkaClient.Consumer.Poller do
   use GenServer
   require Logger
   alias KafkaClient.Consumer.Port
