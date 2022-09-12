@@ -18,8 +18,9 @@ final class ConsumerPoller
   private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
   private ConsumerCommits commits;
   private ConsumerBackpressure backpressure;
+  private HashSet<ConsumerPosition> endOffsets;
 
-  public static ConsumerPoller notifier(
+  public static ConsumerPoller start(
       Properties consumerProps,
       Collection<String> topics,
       Properties pollerProps,
@@ -80,10 +81,15 @@ final class ConsumerPoller
   }
 
   private void handleCommand(Consumer consumer, Object command) throws Exception {
-    if (command instanceof ConsumerAck) {
-      var ack = (ConsumerAck) command;
+    if (command instanceof ConsumerPosition) {
+      var ack = (ConsumerPosition) command;
       backpressure.recordProcessed(ack.partition());
-      if (!isAnonymous())
+      if (isAnonymous()) {
+        if (endOffsets != null) {
+          endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
+          maybeEmitCaughtUp();
+        }
+      } else
         commits.add(ack.partition(), ack.offset());
     } else if (command.equals("stop")) {
       if (!isAnonymous())
@@ -110,10 +116,26 @@ final class ConsumerPoller
         }
       }
       consumer.assign(allPartitions);
-      notifier.emit(endOffsetsToOtp(consumer.endOffsets(allPartitions)));
+      var endOffsets = consumer.endOffsets(allPartitions);
 
+      onPartitionsAssigned(endOffsets.keySet());
+
+      this.endOffsets = new HashSet<>();
+      for (var entry : endOffsets.entrySet()) {
+        if (entry.getValue() > 0)
+          this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
+      }
+
+      maybeEmitCaughtUp();
     } else
       consumer.subscribe(topics, this);
+  }
+
+  private void maybeEmitCaughtUp() throws InterruptedException {
+    if (endOffsets.isEmpty()) {
+      notifier.emit(new OtpErlangAtom("caught_up"));
+      endOffsets = null;
+    }
   }
 
   private boolean isAnonymous() {
@@ -191,20 +213,6 @@ final class ConsumerPoller
         new OtpErlangAtom("committed"),
         new OtpErlangList(elements) });
   }
-
-  static private OtpErlangObject endOffsetsToOtp(Map<TopicPartition, Long> map) {
-    var elements = map.entrySet().stream()
-        .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
-            new OtpErlangBinary(entry.getKey().topic().getBytes()),
-            new OtpErlangInt(entry.getKey().partition()),
-            new OtpErlangLong(entry.getValue())
-        }))
-        .toArray(OtpErlangTuple[]::new);
-
-    return new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom("end_offsets"),
-        new OtpErlangList(elements) });
-  }
 }
 
 final class Consumer extends KafkaConsumer<String, byte[]> {
@@ -213,5 +221,5 @@ final class Consumer extends KafkaConsumer<String, byte[]> {
   }
 }
 
-record ConsumerAck(TopicPartition partition, long offset) {
+record ConsumerPosition(TopicPartition partition, long offset) {
 }

@@ -39,7 +39,7 @@ KafkaClient.Consumer.start_link(
 
 The handler function is invoked with the following arguments:
 
-- `{:assigned, partitions}` - Invoked when partitions are assigned to the consumer. This notification is emitted only if the consumer is in a consumer group.
+- `{:assigned, partitions}` - Invoked when partitions are assigned to the consumer.
 - `{:unassigned, partitions}` - Invoked when the partitions have been revoked from the consumer. This notification is emitted only if the consumer is in a consumer group.
 - `:caught_up` - Invoked when the consumer has caught up with the initial partition tails (aka high watermarks), at the time the consumer first connected to the broker. This notification is emitted only if the consumer is not in a consumer group.
 - `{:record, record}` - Invoked to process the record. The `record` is a map with the following spec:

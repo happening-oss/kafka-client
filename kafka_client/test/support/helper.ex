@@ -41,8 +41,7 @@ defmodule KafkaClient.Test.Helper do
 
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    if group_id != nil,
-      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
+    assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
     %{pid: consumer_pid, child_id: child_id, topics: topics}
   end

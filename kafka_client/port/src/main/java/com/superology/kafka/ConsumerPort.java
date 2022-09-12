@@ -31,7 +31,7 @@ public class ConsumerPort {
     var consumerProps = decodeProperties(args[0]);
     var topics = decodeTopics(args[1]);
     var pollerProps = decodeProperties(args[2]);
-    var poller = ConsumerPoller.notifier(consumerProps, topics, pollerProps, notifier);
+    var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, notifier);
     return poller;
   }
 
@@ -122,12 +122,12 @@ public class ConsumerPort {
     return topics;
   }
 
-  private static ConsumerAck decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
+  private static ConsumerPosition decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
     var topic = new String(((OtpErlangBinary) ack.elementAt(1)).binaryValue());
     var partitionNo = ((OtpErlangLong) ack.elementAt(2)).intValue();
     var partition = new TopicPartition(topic, partitionNo);
     var offset = ((OtpErlangLong) ack.elementAt(3)).longValue();
-    return new ConsumerAck(partition, offset);
+    return new ConsumerPosition(partition, offset);
   }
 
   private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {

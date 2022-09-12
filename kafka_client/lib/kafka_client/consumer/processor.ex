@@ -50,14 +50,6 @@ defmodule KafkaClient.Consumer.Processor do
 
     Port.ack(state.port, state.topic, state.partition, offset)
 
-    state =
-      if state.end_offset != nil and offset + 1 >= state.end_offset do
-        send(state.parent, {:caught_up, {state.topic, state.partition}})
-        %{state | end_offset: nil}
-      else
-        state
-      end
-
     {:noreply, state}
   end
 end

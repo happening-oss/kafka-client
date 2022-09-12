@@ -17,16 +17,16 @@ defmodule KafkaClient.Consumer do
         ephemeral?: true
       )
 
-    {:ok, %{handler: handler, port: nil, end_offsets: nil}}
+    {:ok, %{handler: handler, port: nil}}
   end
 
   @impl GenServer
   def handle_info({:port_started, port}, state),
     do: {:noreply, %{state | port: port}}
 
-  def handle_info({:caught_up, partition}, state) do
-    state = update_in(state.end_offsets, &MapSet.delete(&1, partition))
-    {:noreply, maybe_notify_caught_up(state)}
+  def handle_info(:caught_up, state) do
+    state.handler.(:caught_up)
+    {:noreply, state}
   end
 
   def handle_info({:assigned, partitions} = event, state) do
@@ -39,18 +39,6 @@ defmodule KafkaClient.Consumer do
     Enum.each(partitions, &Parent.shutdown_child({:processor, &1}))
     state.handler.(event)
     {:noreply, state}
-  end
-
-  def handle_info({:end_offsets, end_offsets}, state) do
-    start_processors(state, end_offsets)
-
-    end_offsets =
-      for {topic, partition, offset} <- end_offsets,
-          offset > 0,
-          into: MapSet.new(),
-          do: {topic, partition}
-
-    {:noreply, maybe_notify_caught_up(%{state | end_offsets: end_offsets})}
   end
 
   def handle_info(
@@ -99,41 +87,11 @@ defmodule KafkaClient.Consumer do
     {:stop, {:children_crashed, crashed_children}, state}
   end
 
-  defp maybe_notify_caught_up(state) do
-    if MapSet.size(state.end_offsets) == 0 do
-      state.handler.(:caught_up)
-      %{state | end_offsets: nil}
-    else
-      state
-    end
-  end
-
   defp start_processors(state, partitions) do
     Enum.each(
       partitions,
-      fn partition ->
-        {topic, partition, end_offset} =
-          case partition do
-            {topic, partition} ->
-              {topic, partition, nil}
-
-            # if end_offset is 0, the topic is empty, so we'll send `nil` to the processor, to indicate
-            # that it doesn't need to emit the caught_up notification
-            {topic, partition, 0} ->
-              {topic, partition, nil}
-
-            {_topic, _partition, _offset} ->
-              partition
-          end
-
-        arg = %{
-          parent: self(),
-          topic: topic,
-          partition: partition,
-          end_offset: end_offset,
-          handler: state.handler,
-          port: state.port
-        }
+      fn {topic, partition} ->
+        arg = %{topic: topic, partition: partition, handler: state.handler, port: state.port}
 
         {:ok, _pid} =
           Parent.start_child(
