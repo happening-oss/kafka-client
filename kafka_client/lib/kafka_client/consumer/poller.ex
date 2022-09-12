@@ -84,5 +84,5 @@ defmodule KafkaClient.Consumer.Poller do
 
   defp handle_port_message(message, state), do: notify_subscriber(state, message)
 
-  defp notify_subscriber(state, message), do: send(state.subscriber, message)
+  defp notify_subscriber(state, message), do: send(state.subscriber, {self(), message})
 end
