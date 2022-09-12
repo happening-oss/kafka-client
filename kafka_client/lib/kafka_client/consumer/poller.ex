@@ -24,6 +24,8 @@ defmodule KafkaClient.Consumer.Poller do
 
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
 
+  def stop(pid), do: GenServer.stop(pid)
+
   @impl GenServer
   def init(opts) do
     Process.flag(:trap_exit, true)

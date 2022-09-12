@@ -18,7 +18,7 @@ defmodule KafkaClient.Test.Helper do
     consumer_pid =
       ExUnit.Callbacks.start_supervised!(
         {KafkaClient.Consumer,
-         servers: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end),
+         servers: servers(),
          group_id: group_id,
          topics: topics,
          handler: &handle_consumer_event(&1, test_pid),
@@ -54,21 +54,25 @@ defmodule KafkaClient.Test.Helper do
         fn ->
           Enum.map(
             1..Keyword.get(opts, :num_topics, 1)//1,
-            fn _ -> unique("kafka_client_test_topic") end
+            fn _ -> new_test_topic() end
           )
         end
       )
 
-    if Keyword.get(opts, :recreate_topics?, true) do
-      topics
-      |> Task.async_stream(
-        &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
-        timeout: :timer.seconds(10)
-      )
-      |> Stream.run()
-    end
+    if Keyword.get(opts, :recreate_topics?, true), do: recreate_topics(topics)
 
     topics
+  end
+
+  def new_test_topic, do: unique("kafka_client_test_topic")
+
+  def recreate_topics(topics) do
+    topics
+    |> Task.async_stream(
+      &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
+      timeout: :timer.seconds(10)
+    )
+    |> Stream.run()
   end
 
   defp handle_consumer_event({event_name, _} = event, test_pid)
@@ -152,5 +156,6 @@ defmodule KafkaClient.Test.Helper do
     os_pid
   end
 
+  def servers, do: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end)
   defp brokers, do: [{"localhost", 9092}]
 end
