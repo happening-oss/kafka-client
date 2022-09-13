@@ -31,6 +31,7 @@ defmodule KafkaClient.Consumer.Poller do
     Process.flag(:trap_exit, true)
     processor = Keyword.fetch!(opts, :processor)
     port = Port.open(opts)
+    Process.monitor(processor)
     {:ok, %{port: port, processor: processor}}
   end
 
@@ -44,6 +45,9 @@ defmodule KafkaClient.Consumer.Poller do
     Logger.error("port exited with status #{status}")
     {:stop, :port_crash, %{state | port: nil}}
   end
+
+  def handle_info({:DOWN, _mref, :process, processor, reason}, %{processor: processor} = state),
+    do: {:stop, reason, %{state | processor: nil}}
 
   @impl GenServer
   def terminate(_reason, state),
