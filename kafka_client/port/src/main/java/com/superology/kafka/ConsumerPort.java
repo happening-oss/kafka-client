@@ -5,8 +5,15 @@ import java.util.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
-// Implements the main thread of the consumer port. Runs an input look which
-// reads messages from Elixir, and dispatches the messages to the poller.
+/*
+ * Implements the main thread of the consumer port. Messages are received as
+ * encoded Erlang/Elixir terms (`term_to_binary`).
+ *
+ * These messages are processed by the poller loop (see {@link ConsumerPoller}).
+ * Replying to Elixir is done in the notification thread (see {@link
+ * ConsumerNotifier}).
+ *
+ */
 public class ConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");

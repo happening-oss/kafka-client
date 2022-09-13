@@ -4,6 +4,10 @@ import java.io.*;
 import java.util.concurrent.*;
 import com.ericsson.otp.erlang.*;
 
+/*
+ * This is the output thread which sends notifications to Elixir. Notifications
+ * are sent as Erlang/Elixir terms. See {@link termToBinary} for details.
+ */
 final class ConsumerNotifier implements Runnable {
   public static ConsumerNotifier start() {
     var output = new ConsumerNotifier();

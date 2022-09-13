@@ -1,4 +1,9 @@
 defmodule KafkaClient.Consumer.PartitionProcessor do
+  @moduledoc false
+
+  # This module powers a GenServer which handles a single assigned partition. See
+  # `KafkaClient.Consumer` for details.
+
   use GenServer
   require Logger
   alias KafkaClient.Consumer.Poller

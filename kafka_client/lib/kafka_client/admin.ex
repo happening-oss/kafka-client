@@ -1,5 +1,7 @@
 if Mix.env() in [:dev, :test] do
   defmodule KafkaClient.Admin do
+    @moduledoc false
+
     def recreate_topic(brokers, topic, opts \\ []) do
       if topic in topics(brokers),
         do: :ok = :brod.delete_topics(brokers, [topic], :timer.seconds(5))

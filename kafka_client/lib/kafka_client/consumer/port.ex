@@ -1,4 +1,6 @@
 defmodule KafkaClient.Consumer.Port do
+  @moduledoc false
+
   def open(opts) do
     servers = Keyword.fetch!(opts, :servers)
     topics = Keyword.fetch!(opts, :topics)
@@ -61,5 +63,7 @@ defmodule KafkaClient.Consumer.Port do
       port,
       :erlang.term_to_binary({:ack, topic, partition, offset})
     )
+
+    :ok
   end
 end

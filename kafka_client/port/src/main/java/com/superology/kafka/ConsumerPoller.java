@@ -7,7 +7,12 @@ import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
 /*
- * Runs the kafka poller loop in a separate thread, and dispatches the polled records to Elixir.
+ * Runs the kafka poller loop in a separate thread, and dispatches the polled
+ * records to Elixir (via @ConsumerNotifier).
+ *
+ * In addition, this class accepts acknowledgments (acks) from Elixir, which are
+ * passed via {@link ConsumerPort}. Acks are used for backpressure and commits.
+ * See {@link ConsumerBackpressure} and {@link ConsumerCommits} for details.
  */
 final class ConsumerPoller
     implements Runnable, ConsumerRebalanceListener {
@@ -61,7 +66,8 @@ final class ConsumerPoller
         for (var command : commands())
           handleCommand(consumer, command);
 
-        // flushing after all commands are handled
+        // Backpressure and commits are collected while handling Elixir
+        // commands. Now we're flushing the final state (pauses and commits).
         backpressure.flush();
         if (!isAnonymous())
           commits.flush(false);
@@ -69,6 +75,10 @@ final class ConsumerPoller
         var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
 
         for (var record : records) {
+          // Each record is sent separately to Elixir, instead of sending them
+          // all at once. This improves the throughput, since Elixir can start
+          // processing each record as soon as it arrives, instead of waiting
+          // for all the records to be received.
           notifyElixir(recordToOtp(record));
           backpressure.recordPolled(record);
         }
@@ -109,6 +119,8 @@ final class ConsumerPoller
 
   private void startConsuming(Consumer consumer) throws InterruptedException {
     if (isAnonymous()) {
+      // When not in a consumer group we need to manually self-assign all the
+      // partitions of the desired topics.
       var allPartitions = new ArrayList<TopicPartition>();
       for (var topic : topics) {
         for (var partitionInfo : consumer.partitionsFor(topic)) {
@@ -116,12 +128,18 @@ final class ConsumerPoller
         }
       }
       consumer.assign(allPartitions);
-      var endOffsets = consumer.endOffsets(allPartitions);
 
-      onPartitionsAssigned(endOffsets.keySet());
+      // We'll also fire the assigned notification manually, since the
+      // onPartitionsAssigned callback is not invoked on manual assignment. This
+      // keeps the behaviour consistent and supports synchronism on the
+      // processor side.
+      onPartitionsAssigned(allPartitions);
 
+      // We'll also store the end offsets of all assigned partitions. This
+      // allows us to fire the "caught_up" notification, issued after all the
+      // records, existing at the time of the assignment, are processed.
       this.endOffsets = new HashSet<>();
-      for (var entry : endOffsets.entrySet()) {
+      for (var entry : consumer.endOffsets(allPartitions).entrySet()) {
         if (entry.getValue() > 0)
           this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
       }
@@ -168,7 +186,16 @@ final class ConsumerPoller
   }
 
   private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
-    notifyElixir(new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom(event), toErlangList(partitions) }));
+    notifyElixir(new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom(event),
+        new OtpErlangList(
+            partitions.stream()
+                .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                    new OtpErlangBinary(partition.topic().getBytes()),
+                    new OtpErlangInt(partition.partition())
+                }))
+                .toArray(OtpErlangTuple[]::new))
+    }));
   }
 
   private void notifyElixir(OtpErlangObject payload) {
@@ -177,16 +204,6 @@ final class ConsumerPoller
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
     }
-  }
-
-  static private OtpErlangList toErlangList(Collection<TopicPartition> partitions) {
-    return new OtpErlangList(
-        partitions.stream()
-            .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
-                new OtpErlangBinary(partition.topic().getBytes()),
-                new OtpErlangInt(partition.partition())
-            }))
-            .toArray(OtpErlangTuple[]::new));
   }
 
   static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
