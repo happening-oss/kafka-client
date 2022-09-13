@@ -1,7 +1,7 @@
 defmodule KafkaClient.Consumer do
   use Parent.GenServer
   require Logger
-  alias KafkaClient.Consumer.Poller
+  alias KafkaClient.Consumer.{PartitionProcessor, Poller}
 
   def start_link(opts), do: Parent.GenServer.start_link(__MODULE__, opts)
 
@@ -11,7 +11,7 @@ defmodule KafkaClient.Consumer do
 
     {:ok, poller} =
       Parent.start_child(
-        {Poller, Keyword.put(opts, :subscriber, self())},
+        {Poller, Keyword.put(opts, :processor, self())},
         id: :poller,
         restart: :temporary,
         ephemeral?: true
@@ -44,7 +44,7 @@ defmodule KafkaClient.Consumer do
 
   defp handle_poller_message({:record, record}, _state) do
     {:ok, pid} = Parent.child_pid({:processor, {record.topic, record.partition}})
-    KafkaClient.Consumer.Processor.handle_record(pid, record)
+    PartitionProcessor.handle_record(pid, record)
   end
 
   defp handle_poller_message(message, state),
@@ -56,7 +56,7 @@ defmodule KafkaClient.Consumer do
       fn {topic, partition} ->
         {:ok, _pid} =
           Parent.start_child(
-            {KafkaClient.Consumer.Processor, handler},
+            {PartitionProcessor, handler},
             id: {:processor, {topic, partition}},
             restart: :temporary,
             ephemeral?: true,

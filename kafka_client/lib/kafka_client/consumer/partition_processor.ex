@@ -1,4 +1,4 @@
-defmodule KafkaClient.Consumer.Processor do
+defmodule KafkaClient.Consumer.PartitionProcessor do
   use GenServer
   require Logger
   alias KafkaClient.Consumer.Poller

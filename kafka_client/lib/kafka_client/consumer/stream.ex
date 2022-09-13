@@ -4,7 +4,7 @@ defmodule KafkaClient.Consumer.Stream do
   def new(opts) do
     Stream.resource(
       fn ->
-        opts = Keyword.put(opts, :subscriber, self())
+        opts = Keyword.put(opts, :processor, self())
         {:ok, poller} = Poller.start_link(opts)
         Process.monitor(poller)
         poller

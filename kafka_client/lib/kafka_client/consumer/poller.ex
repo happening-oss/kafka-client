@@ -29,9 +29,9 @@ defmodule KafkaClient.Consumer.Poller do
   @impl GenServer
   def init(opts) do
     Process.flag(:trap_exit, true)
-    subscriber = Keyword.fetch!(opts, :subscriber)
+    processor = Keyword.fetch!(opts, :processor)
     port = Port.open(opts)
-    {:ok, %{port: port, subscriber: subscriber}}
+    {:ok, %{port: port, processor: processor}}
   end
 
   @impl GenServer
@@ -66,7 +66,7 @@ defmodule KafkaClient.Consumer.Poller do
       telemetry_meta(record)
     )
 
-    notify_subscriber(state, {:record, record})
+    notify_processor(state, {:record, record})
   end
 
   defp handle_port_message({:metrics, transfer_time, duration}, _state) do
@@ -84,7 +84,7 @@ defmodule KafkaClient.Consumer.Poller do
     )
   end
 
-  defp handle_port_message(message, state), do: notify_subscriber(state, message)
+  defp handle_port_message(message, state), do: notify_processor(state, message)
 
-  defp notify_subscriber(state, message), do: send(state.subscriber, {self(), message})
+  defp notify_processor(state, message), do: send(state.processor, {self(), message})
 end
