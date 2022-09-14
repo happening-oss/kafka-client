@@ -96,11 +96,11 @@ defmodule KafkaClient.Test.Helper do
 
   def produce(topic, opts \\ []) do
     key = Keyword.get(opts, :key, unique("key"))
-    default_opts = %{partition: 0, key: key, payload: :crypto.strong_rand_bytes(4)}
+    default_opts = %{partition: 0, key: key, value: :crypto.strong_rand_bytes(4)}
     opts = Map.merge(default_opts, Map.new(opts))
 
     {:ok, offset} =
-      :brod.produce_sync_offset(:test_client, topic, opts.partition, opts.key, opts.payload)
+      :brod.produce_sync_offset(:test_client, topic, opts.partition, opts.key, opts.value)
 
     Map.merge(opts, %{topic: topic, offset: offset})
   end

@@ -36,10 +36,10 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     consumer = start_consumer!(num_topics: 2)
     [topic1, topic2] = consumer.topics
 
-    payload = <<0::200_000-unit(8)>>
+    value = <<0::200_000-unit(8)>>
 
     %{offset: last_buffered_offset} =
-      Stream.repeatedly(fn -> produce(topic1, partition: 0, payload: payload) end)
+      Stream.repeatedly(fn -> produce(topic1, partition: 0, value: value) end)
       |> Stream.take(5)
       |> Enum.at(-1)
 
@@ -68,12 +68,12 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     consumer = start_consumer!()
     [topic] = consumer.topics
 
-    payload = <<0::1_000_000-unit(8)>>
+    value = <<0::1_000_000-unit(8)>>
 
-    %{offset: offset1} = produce(topic, partition: 0, payload: payload)
+    %{offset: offset1} = produce(topic, partition: 0, value: value)
     assert_polled(topic, 0, offset1)
 
-    %{offset: offset2} = produce(topic, partition: 0, payload: payload)
+    %{offset: offset2} = produce(topic, partition: 0, value: value)
     assert_polled(topic, 0, offset2)
   end
 end

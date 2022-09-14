@@ -11,7 +11,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     record1 = assert_processing(topic, 0)
     assert record1.offset == produced1.offset
-    assert record1.payload == produced1.payload
+    assert record1.value == produced1.value
 
     refute_processing(topic, 0)
 
@@ -19,7 +19,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     record2 = assert_processing(topic, 0)
     assert record2.offset == produced2.offset
-    assert record2.payload == produced2.payload
+    assert record2.value == produced2.value
     assert record2.key == produced2.key
   end
 
@@ -81,7 +81,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
         produce(topic2, partition: 0),
         produce(topic2, partition: 0)
       ]
-      |> Enum.map(&Map.take(&1, ~w/topic partition offset payload/a))
+      |> Enum.map(&Map.take(&1, ~w/topic partition offset value/a))
       |> Enum.sort()
 
     events =
@@ -99,7 +99,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     assert {:assigned, _partitions} = hd(events)
 
     consumed =
-      for({:record, record} <- events, do: Map.take(record, ~w/topic partition offset payload/a))
+      for({:record, record} <- events, do: Map.take(record, ~w/topic partition offset value/a))
       |> Enum.sort()
 
     assert consumed == produced
@@ -119,7 +119,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
       record2 = assert_processing(topic, 0)
       assert record2.offset == produced2.offset
-      assert record2.payload == produced2.payload
+      assert record2.value == produced2.value
     end)
   end
 end
