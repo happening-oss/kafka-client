@@ -18,7 +18,7 @@ defmodule KafkaClient.Test.Helper do
     consumer_pid =
       ExUnit.Callbacks.start_supervised!(
         {KafkaClient.Consumer,
-         servers: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end),
+         servers: servers(),
          group_id: group_id,
          topics: topics,
          handler: &handle_consumer_event(&1, test_pid),
@@ -34,15 +34,14 @@ defmodule KafkaClient.Test.Helper do
       handler_id,
       [:kafka_client, :consumer, :record, :queue, :start],
       fn _name, _measurements, meta, _config ->
-        if self() == consumer_pid, do: send(test_pid, {:polled, meta})
+        if hd(Process.get(:"$ancestors")) == consumer_pid, do: send(test_pid, {:polled, meta})
       end,
       nil
     )
 
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    if group_id != nil,
-      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
+    assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
     %{pid: consumer_pid, child_id: child_id, topics: topics}
   end
@@ -55,21 +54,25 @@ defmodule KafkaClient.Test.Helper do
         fn ->
           Enum.map(
             1..Keyword.get(opts, :num_topics, 1)//1,
-            fn _ -> unique("kafka_client_test_topic") end
+            fn _ -> new_test_topic() end
           )
         end
       )
 
-    if Keyword.get(opts, :recreate_topics?, true) do
-      topics
-      |> Task.async_stream(
-        &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
-        timeout: :timer.seconds(10)
-      )
-      |> Stream.run()
-    end
+    if Keyword.get(opts, :recreate_topics?, true), do: recreate_topics(topics)
 
     topics
+  end
+
+  def new_test_topic, do: unique("kafka_client_test_topic")
+
+  def recreate_topics(topics) do
+    topics
+    |> Task.async_stream(
+      &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
+      timeout: :timer.seconds(10)
+    )
+    |> Stream.run()
   end
 
   defp handle_consumer_event({event_name, _} = event, test_pid)
@@ -92,11 +95,26 @@ defmodule KafkaClient.Test.Helper do
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
 
   def produce(topic, opts \\ []) do
-    default_opts = %{partition: 0, key: "key", payload: :crypto.strong_rand_bytes(4)}
+    headers = for _ <- 1..5, do: {unique("header_key"), :crypto.strong_rand_bytes(4)}
+    key = Keyword.get(opts, :key, unique("key"))
+
+    default_opts = %{
+      partition: 0,
+      headers: headers,
+      key: key,
+      value: :crypto.strong_rand_bytes(4)
+    }
+
     opts = Map.merge(default_opts, Map.new(opts))
 
     {:ok, offset} =
-      :brod.produce_sync_offset(:test_client, topic, opts.partition, opts.key, opts.payload)
+      :brod.produce_sync_offset(
+        :test_client,
+        topic,
+        opts.partition,
+        opts.key,
+        Map.take(opts, ~w/headers value/a)
+      )
 
     Map.merge(opts, %{topic: topic, offset: offset})
   end
@@ -143,14 +161,16 @@ defmodule KafkaClient.Test.Helper do
     record
   end
 
-  def port(consumer), do: state(consumer).port
+  def port(consumer) do
+    {:ok, poller_pid} = Parent.Client.child_pid(consumer.pid, :poller)
+    :sys.get_state(poller_pid).port
+  end
 
   def os_pid(port) do
     {:os_pid, os_pid} = Port.info(port, :os_pid)
     os_pid
   end
 
-  defp state(consumer), do: :sys.get_state(consumer.pid)
-
+  def servers, do: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end)
   defp brokers, do: [{"localhost", 9092}]
 end

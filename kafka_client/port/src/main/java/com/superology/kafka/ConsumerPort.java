@@ -5,43 +5,70 @@ import java.util.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
+/*
+ * Implements the main thread of the consumer port. Messages are received as
+ * encoded Erlang/Elixir terms (`term_to_binary`).
+ *
+ * These messages are processed by the poller loop (see {@link ConsumerPoller}).
+ * Replying to Elixir is done in the notification thread (see {@link
+ * ConsumerNotifier}).
+ *
+ */
 public class ConsumerPort {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
 
+    // Reading from the file descriptor 3, which is allocated by Elixir for input
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
-      var consumerProps = decodeProperties(args[0]);
-      var topics = decodeTopics(args[1]);
-      var pollerProps = decodeProperties(args[2]);
-      var output = ConsumerOutput.start();
-      var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, output);
+      var poller = startPoller(args, ConsumerNotifier.start());
 
       while (true) {
-        var length = readInt(input);
-        var messageBytes = readBytes(input, length);
-        var message = (OtpErlangTuple) otpDecode(messageBytes);
-
-        switch (message.elementAt(0).toString()) {
-          case "ack":
-            poller.addMessage(decodeAck(message));
-            break;
-
-          case "stop":
-            poller.addMessage("stop");
-            break;
-
-          case "committed_offsets":
-            poller.addMessage("committed_offsets");
-            break;
-        }
+        var command = nextCommand(input);
+        handleCommand(poller, command);
       }
-    } catch (java.io.EOFException e) {
-      System.exit(0);
     } catch (Exception e) {
       System.err.println(e.getMessage());
       e.printStackTrace();
       System.exit(1);
     }
+  }
+
+  private static ConsumerPoller startPoller(String[] args, ConsumerNotifier notifier)
+      throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
+    var consumerProps = decodeProperties(args[0]);
+    var topics = decodeTopics(args[1]);
+    var pollerProps = decodeProperties(args[2]);
+    var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, notifier);
+    return poller;
+  }
+
+  private static void handleCommand(ConsumerPoller poller, OtpErlangTuple command)
+      throws OtpErlangRangeException, Exception {
+    var tag = command.elementAt(0).toString();
+
+    switch (tag) {
+      case "ack":
+        poller.addCommand(decodeAck(command));
+        break;
+
+      case "stop":
+        poller.addCommand("stop");
+        break;
+
+      case "committed_offsets":
+        poller.addCommand("committed_offsets");
+        break;
+
+      default:
+        throw new Exception("unknown command " + tag);
+    }
+  }
+
+  private static OtpErlangTuple nextCommand(DataInputStream input)
+      throws IOException, OtpErlangDecodeException {
+    var length = readInt(input);
+    var bytes = readBytes(input, length);
+    return (OtpErlangTuple) otpDecode(bytes);
   }
 
   private static int readInt(DataInputStream input)
@@ -65,25 +92,33 @@ public class ConsumerPort {
 
     for (var param : params.entrySet()) {
       var key = new String(((OtpErlangBinary) param.getKey()).binaryValue());
-      Object value = param.getValue();
+      var value = otpObjectToJava(param.getValue());
 
-      if (value instanceof OtpErlangBinary)
-        value = new String(((OtpErlangBinary) value).binaryValue());
-      else if (value instanceof OtpErlangLong)
-        value = ((OtpErlangLong) value).intValue();
-      else if (value instanceof OtpErlangAtom) {
-        var atomValue = ((OtpErlangAtom) value).atomValue();
-        if (atomValue.equals("true"))
-          value = true;
-        else if (atomValue.equals("false"))
-          value = false;
-      } else
-        throw new Exception("unknown type " + param.getValue().getClass().toString());
-
-      consumerProps.put(key, value);
+      if (value != null)
+        consumerProps.put(key, value);
     }
 
     return consumerProps;
+  }
+
+  private static Object otpObjectToJava(OtpErlangObject value) throws OtpErlangRangeException, Exception {
+    if (value instanceof OtpErlangBinary)
+      return new String(((OtpErlangBinary) value).binaryValue());
+    else if (value instanceof OtpErlangLong)
+      return ((OtpErlangLong) value).intValue();
+    else if (value instanceof OtpErlangAtom) {
+      var atomValue = ((OtpErlangAtom) value).atomValue();
+      switch (atomValue) {
+        case "true":
+        case "false":
+          return Boolean.parseBoolean(atomValue);
+
+        case "nil":
+          return null;
+      }
+    }
+
+    throw new Exception("error converting to java object " + value);
   }
 
   private static Collection<String> decodeTopics(String encoded) throws IOException, OtpErlangDecodeException {
@@ -94,12 +129,12 @@ public class ConsumerPort {
     return topics;
   }
 
-  private static Ack decodeAck(OtpErlangTuple message) throws OtpErlangRangeException {
-    var topic = new String(((OtpErlangBinary) message.elementAt(1)).binaryValue());
-    var partitionNo = ((OtpErlangLong) message.elementAt(2)).intValue();
+  private static ConsumerPosition decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
+    var topic = new String(((OtpErlangBinary) ack.elementAt(1)).binaryValue());
+    var partitionNo = ((OtpErlangLong) ack.elementAt(2)).intValue();
     var partition = new TopicPartition(topic, partitionNo);
-    var offset = ((OtpErlangLong) message.elementAt(3)).longValue();
-    return new Ack(partition, offset);
+    var offset = ((OtpErlangLong) ack.elementAt(3)).longValue();
+    return new ConsumerPosition(partition, offset);
   }
 
   private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {

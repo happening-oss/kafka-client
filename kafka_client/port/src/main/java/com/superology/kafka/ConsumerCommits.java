@@ -5,13 +5,17 @@ import java.util.*;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 
-final class Commits {
-  HashMap<TopicPartition, OffsetAndMetadata> pendingCommits = new HashMap<TopicPartition, OffsetAndMetadata>();
-  KafkaConsumer<String, byte[]> consumer;
+/*
+ * Responsible for committing offsets to Kafka. This class aggregates pending
+ * commits and periodically flushes them to Kafka.
+ */
+final class ConsumerCommits {
+  PartitionOffsets pendingCommits = new PartitionOffsets();
+  Consumer consumer;
   long commitIntervalNs;
   long lastCommit;
 
-  public Commits(KafkaConsumer<String, byte[]> consumer, long commitIntervalMs) {
+  public ConsumerCommits(Consumer consumer, long commitIntervalMs) {
     this.consumer = consumer;
     this.commitIntervalNs = java.time.Duration.ofMillis(commitIntervalMs).toNanos();
     this.lastCommit = System.nanoTime() - commitIntervalNs;
@@ -38,20 +42,31 @@ final class Commits {
   }
 
   public void partitionsRevoked(Collection<TopicPartition> partitions) {
-    HashMap<TopicPartition, OffsetAndMetadata> commits = new HashMap<TopicPartition, OffsetAndMetadata>();
+    // We're losing some partitions, but there's still time to commit the offsets.
+    PartitionOffsets commits = new PartitionOffsets();
     for (var partition : partitions) {
       var offset = pendingCommits.remove(partition);
       if (offset != null)
         commits.put(partition, offset);
     }
 
+    // Sync committing, because we want to block the callback until we commit.
     try {
-      consumer.commitSync(commits, Duration.ofMillis(500));
+      consumer.commitSync(commits, Duration.ofSeconds(5));
     } catch (Exception e) {
+      // An exception here is not tragic, it just means we failed to commit during a
+      // rebalance. Therefore we'll just swallow and keep going.
     }
   }
 
   public void partitionsLost(Collection<TopicPartition> partitions) {
+    // We can't commit here since the partitions have already been lost.
     pendingCommits.keySet().removeAll(partitions);
+  }
+
+  final class PartitionOffsets extends HashMap<TopicPartition, OffsetAndMetadata> {
+    public PartitionOffsets() {
+      super();
+    }
   }
 }

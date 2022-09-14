@@ -92,7 +92,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     ExUnit.CaptureLog.capture_log(fn ->
       mref = Process.monitor(consumer.pid)
       kill_port(port)
-      assert_receive {:DOWN, ^mref, :process, _pid, :port_crash}
+      assert_receive {:DOWN, ^mref, :process, _pid, {:children_crashed, [:poller]}}
     end)
   end
 
@@ -108,7 +108,8 @@ defmodule KafkaClient.Consumer.FlowTest do
     ExUnit.CaptureLog.capture_log(fn ->
       mref = Process.monitor(consumer.pid)
       Process.exit(record.pid, :kill)
-      assert_receive {:DOWN, ^mref, :process, _pid, :processor_crashed}, :timer.seconds(10)
+      assert_receive {:DOWN, ^mref, :process, _pid, reason}, :timer.seconds(10)
+      assert reason == {:children_crashed, [{:processor, {topic, 0}}]}
     end)
   end
 

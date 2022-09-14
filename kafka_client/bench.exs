@@ -54,15 +54,16 @@ IO.puts("producing messages")
 )
 |> Stream.run()
 
-KafkaClient.Consumer.start_link(
-  servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
-  group_id: "test_group",
-  topics: [topic],
-  handler: fn
-    {:assigned, _partitions} -> send(bench_pid, :consuming)
-    {:record, _record} -> :ok
-  end
-)
+{:ok, consumer_pid} =
+  KafkaClient.Consumer.start_link(
+    servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
+    group_id: "test_group",
+    topics: [topic],
+    handler: fn
+      {:assigned, _partitions} -> send(bench_pid, :consuming)
+      {:record, _record} -> :ok
+    end
+  )
 
 receive do
   :consuming -> IO.puts("started consuming")
@@ -117,3 +118,5 @@ average time in queue: #{max(avg_elixir_queue_time + avg_java_queue_time, 0)} us
 java -> elixir transfer time: #{transfer_times}
 
 """)
+
+GenServer.stop(consumer_pid)

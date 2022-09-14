@@ -11,7 +11,9 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     record1 = assert_processing(topic, 0)
     assert record1.offset == produced1.offset
-    assert record1.payload == produced1.payload
+    assert record1.headers == produced1.headers
+    assert record1.key == produced1.key
+    assert record1.value == produced1.value
 
     refute_processing(topic, 0)
 
@@ -19,7 +21,9 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     record2 = assert_processing(topic, 0)
     assert record2.offset == produced2.offset
-    assert record2.payload == produced2.payload
+    assert record2.headers == produced2.headers
+    assert record2.key == produced2.key
+    assert record2.value == produced2.value
   end
 
   test "concurrent processing" do
@@ -55,7 +59,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     last_processed_record_partition_1 = process_next_record!(topic, 1)
 
     # wait a bit to ensure that the processed records are committed
-    Process.sleep(500)
+    Process.sleep(1000)
     Port.command(port(consumer), :erlang.term_to_binary({:committed_offsets}))
     assert_receive {:committed, offsets}
 
@@ -63,6 +67,45 @@ defmodule KafkaClient.Consumer.ProcessingTest do
              {topic, 0, last_processed_record_partition_0.offset + 1},
              {topic, 1, last_processed_record_partition_1.offset + 1}
            ]
+  end
+
+  test "stream" do
+    topic1 = new_test_topic()
+    topic2 = new_test_topic()
+
+    recreate_topics([topic1, topic2])
+
+    produced =
+      [
+        produce(topic1, partition: 0),
+        produce(topic1, partition: 1),
+        produce(topic1, partition: 1),
+        produce(topic2, partition: 0),
+        produce(topic2, partition: 0),
+        produce(topic2, partition: 0)
+      ]
+      |> Enum.map(&Map.take(&1, ~w/topic partition offset value/a))
+      |> Enum.sort()
+
+    events =
+      KafkaClient.Consumer.Stream.new(servers: servers(), topics: [topic1, topic2])
+      |> Stream.each(fn message ->
+        with {:record, record} <- message,
+             do: KafkaClient.Consumer.Poller.ack(record)
+      end)
+      |> Enum.take_while(&(&1 != :caught_up))
+
+    # expected events are: assigned, produced records, and caught_up (which is already removed with
+    # Enum.take_while)
+    assert length(events) == length(produced) + 1
+
+    assert {:assigned, _partitions} = hd(events)
+
+    consumed =
+      for({:record, record} <- events, do: Map.take(record, ~w/topic partition offset value/a))
+      |> Enum.sort()
+
+    assert consumed == produced
   end
 
   test "handler exception" do
@@ -79,7 +122,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
       record2 = assert_processing(topic, 0)
       assert record2.offset == produced2.offset
-      assert record2.payload == produced2.payload
+      assert record2.value == produced2.value
     end)
   end
 end
