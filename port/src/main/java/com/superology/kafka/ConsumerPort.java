@@ -2,6 +2,8 @@ package com.superology.kafka;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.StreamSupport;
+
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
@@ -36,9 +38,9 @@ public class ConsumerPort {
   private static ConsumerPoller startPoller(String[] args, ConsumerNotifier notifier)
       throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
     var consumerProps = decodeProperties(args[0]);
-    var topics = decodeTopics(args[1]);
+    var subscriptions = decodeSubscriptions(args[1]);
     var pollerProps = decodeProperties(args[2]);
-    var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, notifier);
+    var poller = ConsumerPoller.start(consumerProps, subscriptions, pollerProps, notifier);
     return poller;
   }
 
@@ -121,12 +123,20 @@ public class ConsumerPort {
     throw new Exception("error converting to java object " + value);
   }
 
-  private static Collection<String> decodeTopics(String encoded) throws IOException, OtpErlangDecodeException {
-    var topics = new ArrayList<String>();
-    var topicBytes = java.util.Base64.getDecoder().decode(encoded);
-    for (var topic : (OtpErlangList) otpDecode(topicBytes))
-      topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
-    return topics;
+  private static Collection<TopicPartition> decodeSubscriptions(String encoded)
+      throws IOException, OtpErlangDecodeException, OtpErlangRangeException {
+    var subscriptionBytes = java.util.Base64.getDecoder().decode(encoded);
+    var elements = StreamSupport.stream(((OtpErlangList) otpDecode(subscriptionBytes)).spliterator(), false)
+        .map(el -> ((OtpErlangTuple) el)).toList();
+
+    var subscriptions = new ArrayList<TopicPartition>();
+    for (var element : elements) {
+      var subscription = (OtpErlangTuple) element;
+      var topic = new String(((OtpErlangBinary) subscription.elementAt(0)).binaryValue());
+      var partition = ((OtpErlangLong) subscription.elementAt(1)).intValue();
+      subscriptions.add(new TopicPartition(topic, partition));
+    }
+    return subscriptions;
   }
 
   private static ConsumerPosition decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {

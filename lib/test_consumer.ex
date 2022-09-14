@@ -4,7 +4,7 @@ defmodule TestConsumer do
       KafkaClient.Consumer.start_link(
         servers: ["localhost:9092"],
         group_id: "mygroup",
-        topics: ["mytopic"],
+        subscriptions: ["mytopic"],
         handler: &IO.inspect/1
       )
 

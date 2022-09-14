@@ -34,7 +34,7 @@ defmodule KafkaClient.Consumer do
       KafkaClient.Consumer.start_link(
         servers: ["localhost:9092"],
         group_id: "mygroup",
-        topics: ["topic1", "topic2", ...],
+        subscriptions: ["topic1", "topic2", ...],
 
         poll_duration: 10,
         commit_interval: :timer.seconds(5),

@@ -6,7 +6,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     group_id = unique("test_group")
     consumer = start_consumer!(group_id: group_id)
 
-    [topic] = consumer.topics
+    [topic] = consumer.subscriptions
 
     produce(topic, partition: 0)
     produce(topic, partition: 0)
@@ -23,7 +23,11 @@ defmodule KafkaClient.Consumer.FlowTest do
     Process.sleep(100)
     refute os_process_alive?(os_pid)
 
-    start_consumer!(group_id: group_id, topics: consumer.topics, recreate_topics?: false)
+    start_consumer!(
+      group_id: group_id,
+      subscriptions: consumer.subscriptions,
+      recreate_topics?: false
+    )
 
     processing_after_shutdown = assert_processing(topic, 0)
     assert processing_after_shutdown.offset == processing_during_shutdown.offset
@@ -41,7 +45,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     # start first consumer
     consumer1 = start_consumer!(group_id: group_id, consumer_params: consumer_params)
 
-    [topic] = consumer1.topics
+    [topic] = consumer1.subscriptions
 
     # push some messages on both partitions
     produce(topic, partition: 0)
@@ -63,7 +67,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     # start another consumer, this should trigger rebalance
     start_consumer!(
       group_id: group_id,
-      topics: consumer1.topics,
+      subscriptions: consumer1.subscriptions,
       recreate_topics?: false,
       consumer_params: consumer_params
     )
@@ -98,7 +102,7 @@ defmodule KafkaClient.Consumer.FlowTest do
 
   test "handling of a processor crash" do
     consumer = start_consumer!()
-    [topic] = consumer.topics
+    [topic] = consumer.subscriptions
 
     produce(topic, partition: 0)
     produce(topic, partition: 0)

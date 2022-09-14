@@ -58,7 +58,7 @@ IO.puts("producing messages")
   KafkaClient.Consumer.start_link(
     servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
     group_id: "test_group",
-    topics: [topic],
+    subscriptions: [topic],
     handler: fn
       {:assigned, _partitions} -> send(bench_pid, :consuming)
       {:record, _record} -> :ok

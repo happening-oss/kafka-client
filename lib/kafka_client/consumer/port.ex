@@ -3,7 +3,7 @@ defmodule KafkaClient.Consumer.Port do
 
   def open(opts) do
     servers = Keyword.fetch!(opts, :servers)
-    topics = Keyword.fetch!(opts, :topics)
+    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&normalize_subscription/1)
     group_id = Keyword.get(opts, :group_id)
     user_consumer_params = Keyword.get(opts, :consumer_params, %{})
 
@@ -40,7 +40,7 @@ defmodule KafkaClient.Consumer.Port do
           "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
           "com.superology.kafka.ConsumerPort",
           consumer_params |> :erlang.term_to_binary() |> Base.encode64(),
-          topics |> :erlang.term_to_binary() |> Base.encode64(),
+          subscriptions |> :erlang.term_to_binary() |> Base.encode64(),
           poller_properties |> :erlang.term_to_binary() |> Base.encode64()
         ]
       ]
@@ -66,4 +66,7 @@ defmodule KafkaClient.Consumer.Port do
 
     :ok
   end
+
+  defp normalize_subscription(topic) when is_binary(topic), do: {topic, -1}
+  defp normalize_subscription({_topic, _partition} = subscription), do: subscription
 end

@@ -22,8 +22,8 @@ defmodule KafkaClient.Consumer.Poller do
   ## Anonymous consumer vs consumer group
 
   If the `:group_id` option is not provided, or if it is set to `nil`, the poller will manually
-  assign itself to all partitions of the desired topics, and poll messages from the beginning. The
-  polled messages are not committed to Kafka.
+  assign itself to the desired subscriptions. Anonymous consumer will not commit the acknowledged
+  messages to kafka.
 
   If the `:group_id` options is provided and not `nil`, the poller will subscribe to the desired
   topics. The partitions will be automatically assigned to the poller, as a part of the rebalance.
@@ -90,10 +90,12 @@ defmodule KafkaClient.Consumer.Poller do
           {:processor, pid}
           | {:servers, [String.t()]}
           | {:group_id, String.t() | nil}
-          | {:topics, [String.t()]}
+          | {:subscriptions, [subscription]}
           | {:poll_duration, pos_integer}
           | {:commit_interval, pos_integer}
           | {:consumer_params, %{String.t() => any}}
+
+  @type subscription :: topic | {topic, partition}
 
   @type record :: %{
           optional(atom) => any,
@@ -135,7 +137,11 @@ defmodule KafkaClient.Consumer.Poller do
     - `:processor` - the pid of the process which will receive the consumer notifications.
     - `:servers` - the list of the broker hosts, e.g. `["localhost:9092"]`.
     - `:group_id` - the name of the consumer group. Defaults to `nil` (anonymous consumer).
-    - `:topics` - the list of topics to consume from (e.g. `["topic1", "topic2", ...]`).
+    - `:subscriptions` - the list of subscriptions to consume from (e.g. `["topic1", "topic2", ...]`).
+        A subscription can be a topic (string), or a topic-partition (`{topic, partition}`). If the
+        consumer is anonymous, and only the topic name is provided, the consumer will self-assign
+        to all partitions on the given topic. If the consumer is in a consumer group, the
+        `partition` element is ignored, and the consumer subscribes to the given topic.
     - `:poll_duration` - the duration of a single poll in milliseconds. Defaults to 10.
     - `:commit_interval` - the commit frequency in milliseconds. Defaults to 5000.
     - `:consumer_params` - a `String.t => any` map passed directly to the Java Kafka client.

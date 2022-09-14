@@ -3,10 +3,10 @@ defmodule KafkaClient.Consumer.AnonymousTest do
   import KafkaClient.Test.Helper
 
   test "multiple consumers" do
-    topics = start_consumer!(group_id: nil, num_topics: 2).topics
-    start_consumer!(group_id: nil, topics: topics, recreate_topics?: false)
+    subscriptions = start_consumer!(group_id: nil, num_topics: 2).subscriptions
+    start_consumer!(group_id: nil, subscriptions: subscriptions, recreate_topics?: false)
 
-    [topic1, topic2] = topics
+    [topic1, topic2] = subscriptions
 
     produced1 = produce(topic1, partition: 0)
     produced2 = produce(topic1, partition: 1)
@@ -25,7 +25,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     refute_processing(topic1, 1)
     refute_processing(topic2, 0)
 
-    start_consumer!(group_id: nil, topics: topics, recreate_topics?: false).topics
+    start_consumer!(group_id: nil, subscriptions: subscriptions, recreate_topics?: false)
 
     assert assert_processing(topic1, 0).offset == produced1.offset
     assert assert_processing(topic1, 1).offset == produced2.offset
@@ -38,7 +38,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     assert_caught_up()
 
     # produce some messages
-    [topic1, topic2] = consumer1.topics
+    [topic1, topic2] = consumer1.subscriptions
 
     produced = [
       produce(topic1, partition: 0),
@@ -62,7 +62,11 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     flush_messages()
 
     # start another consumer on the same topics
-    start_consumer!(group_id: nil, topics: consumer1.topics, recreate_topics?: false)
+    start_consumer!(
+      group_id: nil,
+      subscriptions: consumer1.subscriptions,
+      recreate_topics?: false
+    )
 
     # wait until all the records are polled
     Enum.each(produced, &assert_polled(&1.topic, &1.partition, &1.offset))
@@ -92,6 +96,27 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     # subsequent processing shouldn't trigger new caught-up notifications
     Enum.each(produced_after_connect, &process_next_record!(&1.topic, &1.partition))
     refute_caught_up()
+  end
+
+  test "partition assignment" do
+    topic1 = new_test_topic()
+    topic2 = new_test_topic()
+    topic3 = new_test_topic()
+
+    recreate_topics([topic1, topic2, topic3])
+
+    start_consumer!(group_id: nil, subscriptions: [topic1, {topic2, 0}], recreate_topics?: false)
+
+    for topic <- [topic1, topic2, topic3],
+        partition <- 0..1,
+        do: produce(topic, partition: partition)
+
+    assert_processing(topic1, 0)
+    assert_processing(topic1, 1)
+    assert_processing(topic2, 0)
+    refute_processing(topic2, 1)
+    refute_processing(topic3, 0)
+    refute_processing(topic3, 1)
   end
 
   defp flush_messages do

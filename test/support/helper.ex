@@ -10,7 +10,7 @@ defmodule KafkaClient.Test.Helper do
   def start_consumer!(opts \\ []) do
     group_id = Keyword.get(opts, :group_id, unique("test_group"))
 
-    topics = consumer_topics(opts)
+    subscriptions = subscriptions(opts)
 
     test_pid = self()
     child_id = make_ref()
@@ -20,7 +20,7 @@ defmodule KafkaClient.Test.Helper do
         {KafkaClient.Consumer,
          servers: servers(),
          group_id: group_id,
-         topics: topics,
+         subscriptions: subscriptions,
          handler: &handle_consumer_event(&1, test_pid),
          commit_interval: 50,
          consumer_params: Keyword.get(opts, :consumer_params, %{})},
@@ -43,14 +43,14 @@ defmodule KafkaClient.Test.Helper do
 
     assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
-    %{pid: consumer_pid, child_id: child_id, topics: topics}
+    %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions}
   end
 
-  defp consumer_topics(opts) do
-    topics =
+  defp subscriptions(opts) do
+    subscriptions =
       Keyword.get_lazy(
         opts,
-        :topics,
+        :subscriptions,
         fn ->
           Enum.map(
             1..Keyword.get(opts, :num_topics, 1)//1,
@@ -59,9 +59,13 @@ defmodule KafkaClient.Test.Helper do
         end
       )
 
-    if Keyword.get(opts, :recreate_topics?, true), do: recreate_topics(topics)
+    if Keyword.get(opts, :recreate_topics?, true) do
+      subscriptions
+      |> Enum.map(&with {topic, _partition} <- &1, do: topic)
+      |> recreate_topics()
+    end
 
-    topics
+    subscriptions
   end
 
   def new_test_topic, do: unique("kafka_client_test_topic")

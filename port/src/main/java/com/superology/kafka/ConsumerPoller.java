@@ -19,7 +19,7 @@ import com.ericsson.otp.erlang.*;
 final class ConsumerPoller
     implements Runnable, ConsumerRebalanceListener {
   private Properties consumerProps;
-  private Collection<String> topics;
+  private Collection<TopicPartition> subscriptions;
   private ConsumerNotifier notifier;
   private Properties pollerProps;
   private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
@@ -29,10 +29,10 @@ final class ConsumerPoller
 
   public static ConsumerPoller start(
       Properties consumerProps,
-      Collection<String> topics,
+      Collection<TopicPartition> subscriptions,
       Properties pollerProps,
       ConsumerNotifier notifier) {
-    var poller = new ConsumerPoller(consumerProps, topics, pollerProps, notifier);
+    var poller = new ConsumerPoller(consumerProps, subscriptions, pollerProps, notifier);
 
     // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(poller);
@@ -44,11 +44,11 @@ final class ConsumerPoller
 
   private ConsumerPoller(
       Properties consumerProps,
-      Collection<String> topics,
+      Collection<TopicPartition> subscriptions,
       Properties pollerProps,
       ConsumerNotifier notifier) {
     this.consumerProps = consumerProps;
-    this.topics = topics;
+    this.subscriptions = subscriptions;
     this.notifier = notifier;
     this.pollerProps = pollerProps;
   }
@@ -121,34 +121,43 @@ final class ConsumerPoller
 
   private void startConsuming(Consumer consumer) throws InterruptedException {
     if (isAnonymous()) {
-      // When not in a consumer group we need to manually self-assign all the
-      // partitions of the desired topics.
-      var allPartitions = new ArrayList<TopicPartition>();
-      for (var topic : topics) {
-        for (var partitionInfo : consumer.partitionsFor(topic)) {
-          allPartitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
-        }
+      // When not in a consumer group we need to manually self-assign the desired
+      // partitions
+      var assignments = new ArrayList<TopicPartition>();
+      for (var subscription : subscriptions) {
+        if (subscription.partition() >= 0)
+          // client is interested in a particular topic-partition
+          assignments.add(subscription);
+        else
+          // client wants to consume the entire topic
+          for (var partitionInfo : consumer.partitionsFor(subscription.topic()))
+            assignments.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
       }
-      consumer.assign(allPartitions);
+      consumer.assign(assignments);
 
       // We'll also fire the assigned notification manually, since the
       // onPartitionsAssigned callback is not invoked on manual assignment. This
       // keeps the behaviour consistent and supports synchronism on the
       // processor side.
-      onPartitionsAssigned(allPartitions);
+      onPartitionsAssigned(assignments);
 
       // We'll also store the end offsets of all assigned partitions. This
       // allows us to fire the "caught_up" notification, issued after all the
       // records, existing at the time of the assignment, are processed.
       this.endOffsets = new HashSet<>();
-      for (var entry : consumer.endOffsets(allPartitions).entrySet()) {
+      for (var entry : consumer.endOffsets(assignments).entrySet()) {
         if (entry.getValue() > 0)
           this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
       }
 
       maybeEmitCaughtUp();
-    } else
+    } else {
+      // in a consumer group -> subscribe to the desired topics
+      var topics = StreamSupport.stream(subscriptions.spliterator(), false)
+          .map(subscription -> subscription.topic()).distinct()
+          .toList();
       consumer.subscribe(topics, this);
+    }
   }
 
   private void maybeEmitCaughtUp() throws InterruptedException {
