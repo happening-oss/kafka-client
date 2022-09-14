@@ -213,7 +213,8 @@ final class ConsumerPoller
         new OtpErlangInt(record.partition()),
         new OtpErlangLong(record.offset()),
         new OtpErlangLong(record.timestamp()),
-        new OtpErlangBinary(record.value())
+        new OtpErlangBinary(record.value()),
+        new OtpErlangBinary(record.key().getBytes())
     });
   }
 

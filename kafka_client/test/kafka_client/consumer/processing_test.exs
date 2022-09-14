@@ -20,6 +20,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     record2 = assert_processing(topic, 0)
     assert record2.offset == produced2.offset
     assert record2.payload == produced2.payload
+    assert record2.key == produced2.key
   end
 
   test "concurrent processing" do
