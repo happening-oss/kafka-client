@@ -2,6 +2,8 @@ package com.superology.kafka;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.StreamSupport;
+
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
@@ -207,14 +209,21 @@ final class ConsumerPoller
   }
 
   static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
+    var headers = StreamSupport.stream(record.headers().spliterator(), false)
+        .map(header -> new OtpErlangTuple(new OtpErlangObject[] {
+            new OtpErlangBinary(header.key().getBytes()),
+            new OtpErlangBinary(header.value())
+        })).toArray(OtpErlangTuple[]::new);
+
     return new OtpErlangTuple(new OtpErlangObject[] {
         new OtpErlangAtom("record"),
         new OtpErlangBinary(record.topic().getBytes()),
         new OtpErlangInt(record.partition()),
         new OtpErlangLong(record.offset()),
         new OtpErlangLong(record.timestamp()),
+        new OtpErlangList(headers),
+        new OtpErlangBinary(record.key().getBytes()),
         new OtpErlangBinary(record.value()),
-        new OtpErlangBinary(record.key().getBytes())
     });
   }
 

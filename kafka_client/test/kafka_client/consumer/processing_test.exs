@@ -11,6 +11,8 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     record1 = assert_processing(topic, 0)
     assert record1.offset == produced1.offset
+    assert record1.headers == produced1.headers
+    assert record1.key == produced1.key
     assert record1.value == produced1.value
 
     refute_processing(topic, 0)
@@ -19,8 +21,9 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     record2 = assert_processing(topic, 0)
     assert record2.offset == produced2.offset
-    assert record2.value == produced2.value
+    assert record2.headers == produced2.headers
     assert record2.key == produced2.key
+    assert record2.value == produced2.value
   end
 
   test "concurrent processing" do

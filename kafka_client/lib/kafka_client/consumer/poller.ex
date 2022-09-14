@@ -101,6 +101,7 @@ defmodule KafkaClient.Consumer.Poller do
           partition: partition,
           offset: non_neg_integer(),
           timestamp: pos_integer(),
+          headers: [{String.t(), binary}],
           key: String.t(),
           value: binary
         }
@@ -219,12 +220,16 @@ defmodule KafkaClient.Consumer.Poller do
   def terminate(_reason, state),
     do: if(state.port != nil, do: Port.close(state.port))
 
-  defp handle_port_message({:record, topic, partition, offset, timestamp, value, key}, state) do
+  defp handle_port_message(
+         {:record, topic, partition, offset, timestamp, headers, key, value},
+         state
+       ) do
     record = %{
       topic: topic,
       partition: partition,
       offset: offset,
       timestamp: timestamp,
+      headers: headers,
       key: key,
       value: value,
       port: state.port,

@@ -95,12 +95,26 @@ defmodule KafkaClient.Test.Helper do
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
 
   def produce(topic, opts \\ []) do
+    headers = for _ <- 1..5, do: {unique("header_key"), :crypto.strong_rand_bytes(4)}
     key = Keyword.get(opts, :key, unique("key"))
-    default_opts = %{partition: 0, key: key, value: :crypto.strong_rand_bytes(4)}
+
+    default_opts = %{
+      partition: 0,
+      headers: headers,
+      key: key,
+      value: :crypto.strong_rand_bytes(4)
+    }
+
     opts = Map.merge(default_opts, Map.new(opts))
 
     {:ok, offset} =
-      :brod.produce_sync_offset(:test_client, topic, opts.partition, opts.key, opts.value)
+      :brod.produce_sync_offset(
+        :test_client,
+        topic,
+        opts.partition,
+        opts.key,
+        Map.take(opts, ~w/headers value/a)
+      )
 
     Map.merge(opts, %{topic: topic, offset: offset})
   end
