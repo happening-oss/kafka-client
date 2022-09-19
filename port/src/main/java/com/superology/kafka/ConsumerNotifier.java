@@ -6,7 +6,7 @@ import com.ericsson.otp.erlang.*;
 
 /*
  * This is the output thread which sends notifications to Elixir. Notifications
- * are sent as Erlang/Elixir terms. See {@link termToBinary} for details.
+ * are sent as Erlang/Elixir terms.
  */
 final class ConsumerNotifier implements Runnable {
   public static ConsumerNotifier start() {
@@ -60,7 +60,7 @@ final class ConsumerNotifier implements Runnable {
   }
 
   private void notify(DataOutputStream output, OtpErlangObject erlangTerm) throws IOException {
-    byte[] payload = termToBinary(erlangTerm);
+    byte[] payload = ErlangTermFormat.encode(erlangTerm);
 
     // writing to the port
 
@@ -70,27 +70,6 @@ final class ConsumerNotifier implements Runnable {
 
     // then we write the actual payload
     output.write(payload);
-  }
-
-  // This is a Java version of `:erlang.term_to_binary`, powered by JInterface
-  // (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html)
-  private byte[] termToBinary(OtpErlangObject encodedMessage) throws IOException {
-    try (var otpOutStream = new OtpOutputStream(encodedMessage);
-        var byteStream = new java.io.ByteArrayOutputStream()) {
-      // OtpOutputStream.writeToAndFlush produces the binary without the leading
-      // version number byte (131), so we need to include it ourselves.
-      //
-      // The version number is not included because JInterface is developed for
-      // exchanging messages between Erlang nodes, and in this mode of operation the
-      // leading version byte is not included.
-      //
-      // See https://www.erlang.org/doc/apps/erts/erl_ext_dist.html for details
-
-      byteStream.write(131);
-      otpOutStream.writeToAndFlush(byteStream);
-
-      return byteStream.toByteArray();
-    }
   }
 
   record Notification(OtpErlangObject payload, long startTime) {
