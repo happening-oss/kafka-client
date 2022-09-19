@@ -4,11 +4,17 @@ import java.io.*;
 import java.util.*;
 import com.ericsson.otp.erlang.*;
 
-public class ErlangTermFormat {
-  // This is a Java version of `:erlang.term_to_binary`, powered by JInterface
-  // (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html)
-  public static byte[] encode(OtpErlangObject encodedMessage) throws IOException {
-    try (var otpOutStream = new OtpOutputStream(encodedMessage);
+/*
+ * Handles encoding and decoding of Erlang's external term format, which is used
+ * to exchange messages between Elixir and Java.
+ *
+ * Most of the heavy lifting is powered by JInterface
+ * (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html).
+ */
+class ErlangTermFormat {
+  // This is basically a Java version of Erlang's term_to_binary.
+  public static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
+    try (var otpOutStream = new OtpOutputStream(erlangTerm);
         var byteStream = new java.io.ByteArrayOutputStream()) {
       // OtpOutputStream.writeToAndFlush produces the binary without the leading
       // version number byte (131), so we need to include it ourselves.
@@ -26,6 +32,19 @@ public class ErlangTermFormat {
     }
   }
 
+  /*
+   * Decodes an Erlang term format (produced via `:erlang.term_to_binary`) into
+   * a hierarchy of Java objects, with the following rules:
+   *
+   * - integer number is decoded as an integer or a long, depending on its value
+   * - true/false atoms are decoded as a boolean
+   * - nil atom is decoded as null
+   * - other atoms are decoded as a string
+   * - binary is decoded as a string
+   * - list is decoded as Collection<Object>
+   * - tuple is decoded as Object[]
+   * - map is decoded as Map<Object, Object>
+   */
   public static Object decode(byte[] encoded) throws Exception {
     try (var inputStream = new OtpInputStream(encoded)) {
       return fromErlang(inputStream.read_any());

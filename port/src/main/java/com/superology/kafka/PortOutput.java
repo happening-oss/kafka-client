@@ -5,8 +5,11 @@ import java.util.concurrent.*;
 import com.ericsson.otp.erlang.*;
 
 /*
- * This is the output thread which sends messages to Elixir. Messages
- * are sent as Erlang/Elixir terms.
+ * The output thread of a port program. This thread is responsible for sending
+ * messages to Elixir. Messages are sent as Erlang/Elixir terms.
+ *
+ * See {@link PortDriver} for details on port architecture. See {@link
+ * ErlangTermFormat} for details on data encoding.
  */
 final class PortOutput implements Runnable {
   public static PortOutput start() {

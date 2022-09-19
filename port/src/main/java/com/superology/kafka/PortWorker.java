@@ -3,6 +3,9 @@ package com.superology.kafka;
 import java.util.*;
 import java.util.concurrent.*;
 
+/*
+ * The worker thread of a port program. See {@link PortDriver} for details.
+ */
 public class PortWorker implements Runnable {
   public static PortWorker start(Port port, PortOutput output, Object[] args) {
     var worker = new PortWorker(port, output, args);
@@ -35,6 +38,8 @@ public class PortWorker implements Runnable {
       e.printStackTrace();
       System.exit(1);
     }
+
+    System.exit(0);
   }
 
   public void command(Port.Command command) {
