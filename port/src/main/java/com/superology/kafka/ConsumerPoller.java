@@ -21,7 +21,7 @@ final class ConsumerPoller
   private Properties consumerProps;
   private Collection<TopicPartition> subscriptions;
   private ConsumerNotifier notifier;
-  private Properties pollerProps;
+  private Map<String, Object> pollerProps;
   private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
   private ConsumerCommits commits;
   private ConsumerBackpressure backpressure;
@@ -30,7 +30,7 @@ final class ConsumerPoller
   public static ConsumerPoller start(
       Properties consumerProps,
       Collection<TopicPartition> subscriptions,
-      Properties pollerProps,
+      Map<String, Object> pollerProps,
       ConsumerNotifier notifier) {
     var poller = new ConsumerPoller(consumerProps, subscriptions, pollerProps, notifier);
 
@@ -45,7 +45,7 @@ final class ConsumerPoller
   private ConsumerPoller(
       Properties consumerProps,
       Collection<TopicPartition> subscriptions,
-      Properties pollerProps,
+      Map<String, Object> pollerProps,
       ConsumerNotifier notifier) {
     this.consumerProps = consumerProps;
     this.subscriptions = subscriptions;
