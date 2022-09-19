@@ -13,7 +13,7 @@ class PortDriver {
 
       var output = PortOutput.start();
 
-      port.initialize(decodedArgs.toArray(), output);
+      var worker = PortWorker.start(port, output, decodedArgs.toArray());
 
       while (true) {
         var commandParts = nextCommand(input);
@@ -23,7 +23,7 @@ class PortDriver {
         for (int i = 1; i < commandParts.length; i++)
           commandArgs.add(commandParts[i]);
 
-        port.handleCommand(name, commandArgs.toArray());
+        worker.command(new Port.Command(name, commandArgs.toArray()));
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());
@@ -56,7 +56,8 @@ class PortDriver {
 }
 
 interface Port {
-  public void initialize(Object[] args, PortOutput output);
+  public void run(PortWorker worker, Object[] args, PortOutput output);
 
-  public void handleCommand(String name, Object[] args);
+  record Command(String name, Object[] args) {
+  }
 }
