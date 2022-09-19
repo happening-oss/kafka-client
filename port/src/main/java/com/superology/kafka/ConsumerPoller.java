@@ -10,7 +10,7 @@ import com.ericsson.otp.erlang.*;
 
 /*
  * Runs the kafka poller loop in a separate thread, and dispatches the polled
- * records to Elixir (via @ConsumerNotifier).
+ * records to Elixir.
  *
  * In addition, this class accepts acknowledgments (acks) from Elixir, which are
  * passed via {@link ConsumerPort}. Acks are used for backpressure and commits.
@@ -20,7 +20,7 @@ final class ConsumerPoller
     implements Runnable, ConsumerRebalanceListener {
   private Properties consumerProps;
   private Collection<TopicPartition> subscriptions;
-  private ConsumerNotifier notifier;
+  private PortOutput output;
   private Map<String, Object> pollerProps;
   private BlockingQueue<Object> commands = new LinkedBlockingQueue<>();
   private ConsumerCommits commits;
@@ -31,8 +31,8 @@ final class ConsumerPoller
       Properties consumerProps,
       Collection<TopicPartition> subscriptions,
       Map<String, Object> pollerProps,
-      ConsumerNotifier notifier) {
-    var poller = new ConsumerPoller(consumerProps, subscriptions, pollerProps, notifier);
+      PortOutput output) {
+    var poller = new ConsumerPoller(consumerProps, subscriptions, pollerProps, output);
 
     // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(poller);
@@ -46,10 +46,10 @@ final class ConsumerPoller
       Properties consumerProps,
       Collection<TopicPartition> subscriptions,
       Map<String, Object> pollerProps,
-      ConsumerNotifier notifier) {
+      PortOutput output) {
     this.consumerProps = consumerProps;
     this.subscriptions = subscriptions;
-    this.notifier = notifier;
+    this.output = output;
     this.pollerProps = pollerProps;
   }
 
@@ -162,7 +162,7 @@ final class ConsumerPoller
 
   private void maybeEmitCaughtUp() throws InterruptedException {
     if (endOffsets.isEmpty()) {
-      notifier.emit(new OtpErlangAtom("caught_up"));
+      output.emit(new OtpErlangAtom("caught_up"));
       endOffsets = null;
     }
   }
@@ -211,7 +211,7 @@ final class ConsumerPoller
 
   private void notifyElixir(OtpErlangObject payload) {
     try {
-      notifier.emit(payload);
+      output.emit(payload);
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
     }

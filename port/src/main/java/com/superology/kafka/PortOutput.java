@@ -5,12 +5,12 @@ import java.util.concurrent.*;
 import com.ericsson.otp.erlang.*;
 
 /*
- * This is the output thread which sends notifications to Elixir. Notifications
+ * This is the output thread which sends messages to Elixir. Messages
  * are sent as Erlang/Elixir terms.
  */
-final class ConsumerNotifier implements Runnable {
-  public static ConsumerNotifier start() {
-    var output = new ConsumerNotifier();
+final class PortOutput implements Runnable {
+  public static PortOutput start() {
+    var output = new PortOutput();
 
     // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(output);
@@ -20,14 +20,14 @@ final class ConsumerNotifier implements Runnable {
     return output;
   }
 
-  private BlockingQueue<Notification> notifications;
+  private BlockingQueue<Message> messages;
 
-  private ConsumerNotifier() {
-    notifications = new LinkedBlockingQueue<Notification>();
+  private PortOutput() {
+    messages = new LinkedBlockingQueue<Message>();
   }
 
-  public void emit(OtpErlangObject notification) throws InterruptedException {
-    notifications.put(new Notification(notification, System.nanoTime()));
+  public void emit(OtpErlangObject message) throws InterruptedException {
+    messages.put(new Message(message, System.nanoTime()));
   }
 
   @Override
@@ -35,7 +35,7 @@ final class ConsumerNotifier implements Runnable {
     // Writing to the file descriptor 4, which is allocated by Elixir for output
     try (var output = new DataOutputStream(new FileOutputStream("/dev/fd/4"))) {
       while (true) {
-        var message = this.notifications.take();
+        var message = this.messages.take();
 
         // writing to the port is to some extent a blocking operation, so we measure it
         var sendingAt = System.nanoTime();
@@ -72,6 +72,6 @@ final class ConsumerNotifier implements Runnable {
     output.write(payload);
   }
 
-  record Notification(OtpErlangObject payload, long startTime) {
+  record Message(OtpErlangObject payload, long startTime) {
   }
 }

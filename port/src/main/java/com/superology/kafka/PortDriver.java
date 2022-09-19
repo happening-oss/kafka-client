@@ -11,7 +11,9 @@ class PortDriver {
       for (var arg : args)
         decodedArgs.add(decodeArg(arg));
 
-      port.initialize(decodedArgs.toArray());
+      var output = PortOutput.start();
+
+      port.initialize(decodedArgs.toArray(), output);
 
       while (true) {
         var commandParts = nextCommand(input);
@@ -54,7 +56,7 @@ class PortDriver {
 }
 
 interface Port {
-  public void initialize(Object[] args);
+  public void initialize(Object[] args, PortOutput output);
 
   public void handleCommand(String name, Object[] args);
 }

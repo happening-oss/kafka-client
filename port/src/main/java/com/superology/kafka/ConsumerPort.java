@@ -21,8 +21,8 @@ public class ConsumerPort implements Port {
   private ConsumerPoller poller;
 
   @Override
-  public void initialize(Object[] args) {
-    poller = startPoller(args);
+  public void initialize(Object[] args, PortOutput output) {
+    poller = startPoller(args, output);
   }
 
   @Override
@@ -52,7 +52,7 @@ public class ConsumerPort implements Port {
   }
 
   @SuppressWarnings("unchecked")
-  private static ConsumerPoller startPoller(Object[] args) {
+  private static ConsumerPoller startPoller(Object[] args, PortOutput output) {
     var consumerPropsMap = (Map<Object, Object>) args[0];
     // need to remove nulls, because Properties doesn't support them
     consumerPropsMap.values().removeAll(Collections.singleton(null));
@@ -68,7 +68,7 @@ public class ConsumerPort implements Port {
     }
     var pollerProps = (Map<String, Object>) args[2];
 
-    return ConsumerPoller.start(consumerProps, subscriptions, pollerProps, ConsumerNotifier.start());
+    return ConsumerPoller.start(consumerProps, subscriptions, pollerProps, output);
   }
 
   private static ConsumerPosition toConsumerPosition(Object[] ackArgs) {
