@@ -1,0 +1,30 @@
+{
+  "repo_config": {
+    "deploy_keys": [
+      2134711
+    ],
+    "pipeline_schedules": [
+      {
+        "id": 291613,
+        "description": "auto dependency update",
+        "cron": "0 5 * * 1",
+        "cron_time_zone": "Europe/Zagreb",
+        "ref": "develop"
+      }
+    ],
+    "file_hash": {
+      ".gitlab-ci.yml": "0c2c1ef720470477b9c1229b2c46faf697984ed82e1cc1afa2cbdd1f99cae303",
+      ".scorealarm-curator/application-compile-and-release.yml": "fa61b366ad38fc89786fae65f6daa7723743d8ff462b70ce0815f12ab06ccd0f",
+      ".scorealarm-curator/application-deploy.yml": "758298b57a108ab37b521a14bdf5660203cdcb7c099086c3f9da907acae56452",
+      ".scorealarm-curator/application-triggers.yml": "4116a2b94ba52ef83b0728e47824164166e4e181ba12108be7c85b6ea5005dce",
+      ".surgy_ci/settings/pipeline.settings.json": "5f1a33423f2b34f63e37cd974ec444ba03ae3370eee59b4bc3f534909ed1dec4"
+    }
+  },
+  "project_config": {
+    "name": "kafka_client",
+    "git_ssh_url": "git@gitlab.com:superbet/stats/kafka-client.git",
+    "gitlab_web_url": "https://gitlab.com/superbet/stats/kafka-client",
+    "upstream_dependencies": null,
+    "downstream_dependencies": null
+  }
+}
