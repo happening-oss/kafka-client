@@ -32,7 +32,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   @Override
   @SuppressWarnings("unchecked")
-  public void run(PortWorker worker, Object[] args, PortOutput output) {
+  public void run(PortWorker worker, PortOutput output, Object[] args) {
     this.output = output;
     var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
 

@@ -176,10 +176,10 @@ defmodule KafkaClient.Consumer.Poller do
       })
 
     GenPort.start_link(
-      "ConsumerPort",
-      [consumer_params, subscriptions, poller_properties],
       __MODULE__,
-      Keyword.fetch!(opts, :processor)
+      Keyword.fetch!(opts, :processor),
+      "ConsumerPort",
+      [consumer_params, subscriptions, poller_properties]
     )
   end
 

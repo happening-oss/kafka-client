@@ -85,7 +85,7 @@ class PortDriver {
  */
 interface Port {
   // Invoked in the worker thread to run main port loop.
-  public void run(PortWorker worker, Object[] args, PortOutput output);
+  public void run(PortWorker worker, PortOutput output, Object[] args);
 
   record Command(String name, Object[] args) {
   }

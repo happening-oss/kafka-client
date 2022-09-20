@@ -32,7 +32,7 @@ public class PortWorker implements Runnable {
   @Override
   public void run() {
     try {
-      port.run(this, args, output);
+      port.run(this, output, args);
     } catch (Exception e) {
       System.err.println(e.getMessage());
       e.printStackTrace();

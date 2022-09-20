@@ -21,10 +21,10 @@ defmodule KafkaClient.GenPort do
               | {:noreply, state, timeout() | :hibernate | {:continue, continue_arg :: term()}}
               | {:stop, reason :: term(), state}
 
-  def start_link(main_class, port_args, callback, callback_args, gen_server_opts \\ []) do
+  def start_link(callback, callback_arg, main_class, port_args, gen_server_opts \\ []) do
     GenServer.start_link(
       __MODULE__,
-      {main_class, port_args, callback, callback_args},
+      {callback, callback_arg, main_class, port_args},
       gen_server_opts
     )
   end
@@ -42,7 +42,7 @@ defmodule KafkaClient.GenPort do
   def port(), do: Process.get({__MODULE__, :port})
 
   @impl GenServer
-  def init({main_class, port_args, callback, callback_arg}) do
+  def init({callback, callback_arg, main_class, port_args}) do
     Process.flag(:trap_exit, true)
 
     port = open(main_class, port_args)
