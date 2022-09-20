@@ -167,7 +167,8 @@ defmodule KafkaClient.Test.Helper do
 
   def port(consumer) do
     {:ok, poller_pid} = Parent.Client.child_pid(consumer.pid, :poller)
-    :sys.get_state(poller_pid).port
+    {:dictionary, dictionary} = Process.info(poller_pid, :dictionary)
+    dictionary |> Map.new() |> Map.fetch!({KafkaClient.GenPort, :port})
   end
 
   def os_pid(port) do

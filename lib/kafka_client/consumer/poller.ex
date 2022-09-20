@@ -82,9 +82,9 @@ defmodule KafkaClient.Consumer.Poller do
   supervisor.
   """
 
-  use GenServer
+  use KafkaClient.GenPort
   require Logger
-  alias KafkaClient.Consumer.Port
+  alias KafkaClient.GenPort
 
   @type option ::
           {:processor, pid}
@@ -148,7 +148,40 @@ defmodule KafkaClient.Consumer.Poller do
       See https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html for details.
   """
   @spec start_link([option | {:processor, pid}]) :: GenServer.on_start()
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+  def start_link(opts) do
+    servers = Keyword.fetch!(opts, :servers)
+    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&normalize_subscription/1)
+    group_id = Keyword.get(opts, :group_id)
+    user_consumer_params = Keyword.get(opts, :consumer_params, %{})
+
+    poller_properties = %{
+      "poll_duration" => Keyword.get(opts, :poll_duration, 10),
+      "commit_interval" => Keyword.get(opts, :commit_interval, :timer.seconds(5))
+    }
+
+    consumer_params =
+      %{
+        "heartbeat.interval.ms" => 100,
+        "max.poll.interval.ms" => 1000,
+        "auto.offset.reset" => "earliest"
+      }
+      |> Map.merge(user_consumer_params)
+      # non-overridable params
+      |> Map.merge(%{
+        "bootstrap.servers" => Enum.join(servers, ","),
+        "group.id" => group_id,
+        "enable.auto.commit" => false,
+        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
+        "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer"
+      })
+
+    GenPort.start_link(
+      "ConsumerPort",
+      [consumer_params, subscriptions, poller_properties],
+      __MODULE__,
+      Keyword.fetch!(opts, :processor)
+    )
+  end
 
   @doc "Synchronously stops the poller process."
   @spec stop(GenServer.server()) :: :ok
@@ -193,43 +226,27 @@ defmodule KafkaClient.Consumer.Poller do
   """
   @spec ack(record) :: :ok
   def ack(record),
-    do: Port.ack(record.port, record.topic, record.partition, record.offset)
+    do: GenPort.command(record.port, {:ack, record.topic, record.partition, record.offset})
 
   @doc "Returns the record fields used as a meta in telemetry events."
   @spec telemetry_meta(record) :: %{atom => any}
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
 
   @impl GenServer
-  def init(opts) do
-    Process.flag(:trap_exit, true)
-    processor = Keyword.fetch!(opts, :processor)
-    port = Port.open(opts)
+  def init(processor) do
     Process.monitor(processor)
-    {:ok, %{port: port, processor: processor}}
+    {:ok, %{processor: processor}}
   end
 
   @impl GenServer
-  def handle_info({port, {:data, data}}, %{port: port} = state) do
-    data |> :erlang.binary_to_term() |> handle_port_message(state)
-    {:noreply, state}
-  end
-
-  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.error("port exited with status #{status}")
-    {:stop, :port_crash, %{state | port: nil}}
-  end
-
   def handle_info({:DOWN, _mref, :process, processor, reason}, %{processor: processor} = state),
     do: {:stop, reason, %{state | processor: nil}}
 
-  @impl GenServer
-  def terminate(_reason, state),
-    do: if(state.port != nil, do: Port.close(state.port))
-
-  defp handle_port_message(
-         {:record, topic, partition, offset, timestamp, headers, key, value},
-         state
-       ) do
+  @impl GenPort
+  def handle_port_message(
+        {:record, topic, partition, offset, timestamp, headers, key, value},
+        state
+      ) do
     record = %{
       topic: topic,
       partition: partition,
@@ -238,7 +255,7 @@ defmodule KafkaClient.Consumer.Poller do
       headers: headers,
       key: key,
       value: value,
-      port: state.port,
+      port: GenPort.port(),
       received_at: System.monotonic_time()
     }
 
@@ -249,9 +266,11 @@ defmodule KafkaClient.Consumer.Poller do
     )
 
     notify_processor(state, {:record, record})
+
+    {:noreply, state}
   end
 
-  defp handle_port_message({:metrics, transfer_time, duration}, _state) do
+  def handle_port_message({:metrics, transfer_time, duration}, state) do
     transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
     duration = System.convert_time_unit(duration, :nanosecond, :native)
 
@@ -264,9 +283,17 @@ defmodule KafkaClient.Consumer.Poller do
       },
       %{}
     )
+
+    {:noreply, state}
   end
 
-  defp handle_port_message(message, state), do: notify_processor(state, message)
+  def handle_port_message(message, state) do
+    notify_processor(state, message)
+    {:noreply, state}
+  end
 
   defp notify_processor(state, message), do: send(state.processor, {self(), message})
+
+  defp normalize_subscription(topic) when is_binary(topic), do: {topic, -1}
+  defp normalize_subscription({_topic, _partition} = subscription), do: subscription
 end
