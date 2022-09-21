@@ -63,7 +63,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
           // all at once. This improves the throughput, since Elixir can start
           // processing each record as soon as it arrives, instead of waiting
           // for all the records to be received.
-          notifyElixir(recordToOtp(record));
+          output.emit(recordToOtp(record));
           backpressure.recordPolled(record);
         }
       }
@@ -198,21 +198,17 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   }
 
   private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
-    notifyElixir(new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom(event),
-        new OtpErlangList(
-            partitions.stream()
-                .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
-                    new OtpErlangBinary(partition.topic().getBytes()),
-                    new OtpErlangInt(partition.partition())
-                }))
-                .toArray(OtpErlangTuple[]::new))
-    }));
-  }
-
-  private void notifyElixir(OtpErlangObject payload) {
     try {
-      output.emit(payload);
+      output.emit(new OtpErlangTuple(new OtpErlangObject[] {
+          new OtpErlangAtom(event),
+          new OtpErlangList(
+              partitions.stream()
+                  .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                      new OtpErlangBinary(partition.topic().getBytes()),
+                      new OtpErlangInt(partition.partition())
+                  }))
+                  .toArray(OtpErlangTuple[]::new))
+      }));
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
     }
