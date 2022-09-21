@@ -3,6 +3,7 @@ package com.superology.kafka;
 import java.io.*;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.StreamSupport;
 
 import com.ericsson.otp.erlang.*;
 
@@ -42,8 +43,8 @@ class Erlang {
     return new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom("error"), value });
   }
 
-  public static <T> OtpErlangList toList(Collection<T> collection, Function<T, OtpErlangObject> mapper) {
-    var elements = collection.stream().map(mapper).toArray(OtpErlangObject[]::new);
+  public static <T> OtpErlangList toList(Iterable<T> iterable, Function<T, OtpErlangObject> mapper) {
+    var elements = StreamSupport.stream(iterable.spliterator(), false).map(mapper).toArray(OtpErlangObject[]::new);
     return new OtpErlangList(elements);
   }
 

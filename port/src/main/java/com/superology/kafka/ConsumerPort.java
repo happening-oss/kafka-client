@@ -201,13 +201,12 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     try {
       output.emit(new OtpErlangTuple(new OtpErlangObject[] {
           new OtpErlangAtom(event),
-          new OtpErlangList(
-              partitions.stream()
-                  .map(partition -> new OtpErlangTuple(new OtpErlangObject[] {
-                      new OtpErlangBinary(partition.topic().getBytes()),
-                      new OtpErlangInt(partition.partition())
-                  }))
-                  .toArray(OtpErlangTuple[]::new))
+          Erlang.toList(
+              partitions,
+              partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                  new OtpErlangBinary(partition.topic().getBytes()),
+                  new OtpErlangInt(partition.partition())
+              }))
       }));
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
@@ -215,11 +214,12 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   }
 
   static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
-    var headers = StreamSupport.stream(record.headers().spliterator(), false)
-        .map(header -> new OtpErlangTuple(new OtpErlangObject[] {
+    var headers = Erlang.toList(
+        record.headers(),
+        header -> new OtpErlangTuple(new OtpErlangObject[] {
             new OtpErlangBinary(header.key().getBytes()),
             new OtpErlangBinary(header.value())
-        })).toArray(OtpErlangTuple[]::new);
+        }));
 
     return new OtpErlangTuple(new OtpErlangObject[] {
         new OtpErlangAtom("record"),
@@ -227,22 +227,20 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         new OtpErlangInt(record.partition()),
         new OtpErlangLong(record.offset()),
         new OtpErlangLong(record.timestamp()),
-        new OtpErlangList(headers),
+        headers,
         new OtpErlangBinary(record.key().getBytes()),
         new OtpErlangBinary(record.value()),
     });
   }
 
   static private OtpErlangObject committedOffsetsToOtp(Map<TopicPartition, OffsetAndMetadata> map) {
-    var elements = map.entrySet().stream()
-        .filter(entry -> entry.getValue() != null)
-        .map(entry -> new OtpErlangTuple(new OtpErlangObject[] {
+    return Erlang.toList(
+        map.entrySet().stream().filter(entry -> entry.getValue() != null).toList(),
+        entry -> new OtpErlangTuple(new OtpErlangObject[] {
             new OtpErlangBinary(entry.getKey().topic().getBytes()),
             new OtpErlangInt(entry.getKey().partition()),
             new OtpErlangLong(entry.getValue().offset())
-        })).toArray(OtpErlangTuple[]::new);
-
-    return new OtpErlangList(elements);
+        }));
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {
