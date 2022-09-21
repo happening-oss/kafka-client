@@ -60,12 +60,10 @@ class PortDriver {
     return buildCommand(commandTuple);
   }
 
-  @SuppressWarnings("unchecked")
   private static Port.Command buildCommand(Object[] commandTuple) {
-    return new Port.Command(
-        (String) commandTuple[0],
-        ((Collection<Object>) commandTuple[1]).toArray(),
-        (String) commandTuple[2]);
+    @SuppressWarnings("unchecked")
+    var args = (Collection<Object>) commandTuple[1];
+    return new Port.Command((String) commandTuple[0], args.toArray(), (String) commandTuple[2]);
   }
 
   private static int readInt(DataInputStream input) throws IOException {

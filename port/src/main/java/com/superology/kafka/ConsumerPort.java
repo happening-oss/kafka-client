@@ -31,23 +31,17 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   private boolean isAnonymous;
 
   @Override
-  @SuppressWarnings("unchecked")
   public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     this.output = output;
-    var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
 
-    isAnonymous = (consumerProps.getProperty("group.id") == null);
+    var opts = opts(args);
+    isAnonymous = (opts.consumerProps().getProperty("group.id") == null);
 
-    var subscriptions = new ArrayList<TopicPartition>();
-    for (var subscription : (Iterable<Object[]>) args[1])
-      subscriptions.add(new TopicPartition((String) subscription[0], (int) subscription[1]));
+    try (var consumer = new Consumer(opts.consumerProps())) {
+      startConsuming(consumer, opts.subscriptions());
 
-    try (var consumer = new Consumer(consumerProps)) {
-      startConsuming(consumer, subscriptions);
-
-      Map<String, Object> pollerProps = (Map<String, Object>) args[2];
-      var pollInterval = (int) pollerProps.getOrDefault("poll_interval", 10);
-      var commitInterval = (int) pollerProps.getOrDefault("commmit_interval", 5000);
+      var pollInterval = (int) opts.pollerProps().getOrDefault("poll_interval", 10);
+      var commitInterval = (int) opts.pollerProps().getOrDefault("commmit_interval", 5000);
       commits = new ConsumerCommits(consumer, commitInterval);
       backpressure = new ConsumerBackpressure(consumer);
 
@@ -74,6 +68,22 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         }
       }
     }
+  }
+
+  private Opts opts(Object[] args) {
+    @SuppressWarnings("unchecked")
+    var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
+
+    var subscriptions = new ArrayList<TopicPartition>();
+
+    for (@SuppressWarnings("unchecked")
+    var subscription : (Iterable<Object[]>) args[1])
+      subscriptions.add(new TopicPartition((String) subscription[0], (int) subscription[1]));
+
+    @SuppressWarnings("unchecked")
+    var pollerProps = (Map<String, Object>) args[2];
+
+    return new Opts(consumerProps, subscriptions, pollerProps);
   }
 
   private void handleCommand(Consumer consumer, Port.Command command) throws Exception {
@@ -245,6 +255,9 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     var result = new Properties();
     result.putAll(map);
     return result;
+  }
+
+  record Opts(Properties consumerProps, Collection<TopicPartition> subscriptions, Map<String, Object> pollerProps) {
   }
 }
 
