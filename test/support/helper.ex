@@ -165,9 +165,13 @@ defmodule KafkaClient.Test.Helper do
     record
   end
 
+  def poller(consumer) do
+    {:ok, poller} = Parent.Client.child_pid(consumer.pid, :poller)
+    poller
+  end
+
   def port(consumer) do
-    {:ok, poller_pid} = Parent.Client.child_pid(consumer.pid, :poller)
-    {:dictionary, dictionary} = Process.info(poller_pid, :dictionary)
+    {:dictionary, dictionary} = Process.info(poller(consumer), :dictionary)
     dictionary |> Map.new() |> Map.fetch!({KafkaClient.GenPort, :port})
   end
 

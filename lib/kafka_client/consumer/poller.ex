@@ -101,7 +101,7 @@ defmodule KafkaClient.Consumer.Poller do
           optional(atom) => any,
           topic: topic,
           partition: partition,
-          offset: non_neg_integer(),
+          offset: offset,
           timestamp: pos_integer(),
           headers: [{String.t(), binary}],
           key: String.t(),
@@ -128,6 +128,7 @@ defmodule KafkaClient.Consumer.Poller do
 
   @type topic :: String.t()
   @type partition :: non_neg_integer
+  @type offset :: non_neg_integer
 
   @doc """
   Starts the poller process.
@@ -231,6 +232,10 @@ defmodule KafkaClient.Consumer.Poller do
   @doc "Returns the record fields used as a meta in telemetry events."
   @spec telemetry_meta(record) :: %{atom => any}
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
+
+  @doc "Returns committed offsets for the currently assigned partitions of this consumer."
+  @spec committed_offsets(GenServer.server()) :: [{topic, partition, offset}]
+  def committed_offsets(server), do: GenPort.call(server, :committed_offsets)
 
   @impl GenServer
   def init(processor) do

@@ -60,8 +60,8 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     # wait a bit to ensure that the processed records are committed
     Process.sleep(:timer.seconds(5))
-    KafkaClient.GenPort.command(port(consumer), :committed_offsets)
-    assert_receive {:committed, offsets}
+
+    offsets = KafkaClient.Consumer.Poller.committed_offsets(poller(consumer))
 
     assert Enum.sort(offsets) == [
              {topic, 0, last_processed_record_partition_0.offset + 1},

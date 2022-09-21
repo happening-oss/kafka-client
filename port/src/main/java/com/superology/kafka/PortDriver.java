@@ -64,7 +64,8 @@ class PortDriver {
   private static Port.Command buildCommand(Object[] commandTuple) {
     return new Port.Command(
         (String) commandTuple[0],
-        ((Collection<Object>) commandTuple[1]).toArray());
+        ((Collection<Object>) commandTuple[1]).toArray(),
+        (String) commandTuple[2]);
   }
 
   private static int readInt(DataInputStream input) throws IOException {
@@ -89,6 +90,6 @@ interface Port {
   // Invoked in the worker thread to run main port loop.
   public void run(PortWorker worker, PortOutput output, Object[] args);
 
-  record Command(String name, Object[] args) {
+  record Command(String name, Object[] args, String ref) {
   }
 }

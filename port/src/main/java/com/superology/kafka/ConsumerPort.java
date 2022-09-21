@@ -114,7 +114,9 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         break;
 
       case "committed_offsets":
-        notifyElixir(committedOffsetsToOtp(consumer.committed(consumer.assignment())));
+        output.emitCallresponse(
+            command,
+            committedOffsetsToOtp(consumer.committed(consumer.assignment())));
         break;
 
       default:
@@ -238,9 +240,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
             new OtpErlangLong(entry.getValue().offset())
         })).toArray(OtpErlangTuple[]::new);
 
-    return new OtpErlangTuple(new OtpErlangObject[] {
-        new OtpErlangAtom("committed"),
-        new OtpErlangList(elements) });
+    return new OtpErlangList(elements);
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {

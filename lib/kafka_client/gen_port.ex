@@ -29,12 +29,18 @@ defmodule KafkaClient.GenPort do
     )
   end
 
-  def command(port, name, args \\ []) do
-    Port.command(port, :erlang.term_to_binary({name, args}))
+  def command(port, name, args \\ [], ref \\ nil) do
+    Port.command(port, :erlang.term_to_binary({name, args, ref}))
     :ok
   end
 
   def port(), do: Process.get({__MODULE__, :port})
+
+  def call(server, name, args \\ [], timeout \\ :timer.seconds(5)) do
+    server
+    |> GenServer.whereis()
+    |> GenServer.call({{__MODULE__, :call}, name, args}, timeout)
+  end
 
   @impl GenServer
   def init({callback, callback_arg, main_class, port_args}) do
@@ -57,29 +63,49 @@ defmodule KafkaClient.GenPort do
 
   @impl GenServer
   def handle_info({port, {:exit_status, status}} = message, state) do
-    if port == port() do
-      Logger.error("unexpected port exit with status #{status}")
-      {:stop, :port_crash, %{state | port: nil}}
-    else
-      callback().handle_info(message, state)
-    end
+    if port == port(),
+      do: handle_port_terminated(status, state),
+      else: callback().handle_info(message, state)
   end
 
   @impl GenServer
   def handle_info({port, {:data, data}} = message, state) do
-    if port == port(),
-      do: data |> :erlang.binary_to_term() |> callback().handle_port_message(state),
-      else: callback().handle_info(message, state)
+    if port == port() do
+      term = :erlang.binary_to_term(data)
+
+      case decode_call_response(term) do
+        {:ok, from, response} ->
+          GenServer.reply(from, response)
+          {:noreply, state}
+
+        :error ->
+          callback().handle_port_message(term, state)
+      end
+    else
+      callback().handle_info(message, state)
+    end
   end
 
   def handle_info(message, state),
     do: callback().handle_info(message, state)
 
   @impl GenServer
-  def handle_cast(message, state), do: callback().handle_cast(message, state)
+  def handle_call({{__MODULE__, :call}, name, args}, from, state) do
+    port = port()
+    ref = store_call(from)
+    command(port, name, args, ref)
+    {:noreply, state}
+  end
+
+  def handle_call(message, from, state), do: callback().handle_call(message, from, state)
 
   @impl GenServer
-  def handle_call(message, from, state), do: callback().handle_call(message, from, state)
+  def handle_cast(message, state), do: callback().handle_cast(message, state)
+
+  defp handle_port_terminated(exit_status, state) do
+    Logger.error("unexpected port exit with status #{exit_status}")
+    {:stop, :port_crash, %{state | port: nil}}
+  end
 
   defp open(main_class, args) do
     encoded_args = Enum.map(args, &(&1 |> :erlang.term_to_binary() |> Base.encode64()))
@@ -113,6 +139,25 @@ defmodule KafkaClient.GenPort do
   end
 
   defp callback(), do: Process.get({__MODULE__, :callback})
+
+  defp store_call({_pid, tag} = from) do
+    ref = tag |> :erlang.term_to_binary() |> Base.encode64(padding: false)
+    Process.put({__MODULE__, :calls}, Map.put(calls(), ref, from))
+    ref
+  end
+
+  defp decode_call_response(term) do
+    with {:"$kafka_consumer_response", ref, response} <- term do
+      {from, calls} = Map.pop!(calls(), ref)
+      Process.put({__MODULE__, :calls}, calls)
+      {:ok, from, response}
+    else
+      _ ->
+        :error
+    end
+  end
+
+  defp calls(), do: Process.get({__MODULE__, :calls}, %{})
 
   defmacro __using__(opts) do
     quote location: :keep, bind_quoted: [opts: opts, behaviour: __MODULE__] do
