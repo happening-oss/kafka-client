@@ -226,7 +226,7 @@ defmodule KafkaClient.Consumer.Poller do
   """
   @spec ack(record) :: :ok
   def ack(record),
-    do: GenPort.command(record.port, {:ack, record.topic, record.partition, record.offset})
+    do: GenPort.command(record.port, :ack, [record.topic, record.partition, record.offset])
 
   @doc "Returns the record fields used as a meta in telemetry events."
   @spec telemetry_meta(record) :: %{atom => any}

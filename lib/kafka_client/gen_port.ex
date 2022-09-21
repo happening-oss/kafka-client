@@ -29,13 +29,8 @@ defmodule KafkaClient.GenPort do
     )
   end
 
-  def command(port, payload) do
-    unless is_atom(payload) or (is_tuple(payload) and is_atom(elem(payload, 0))),
-      do: raise("payload can only be an atom or a tuple where the first element is atom")
-
-    payload = with atom when is_atom(atom) <- payload, do: {payload}
-    Port.command(port, :erlang.term_to_binary(payload))
-
+  def command(port, name, args \\ []) do
+    Port.command(port, :erlang.term_to_binary({name, args}))
     :ok
   end
 

@@ -60,7 +60,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
     # wait a bit to ensure that the processed records are committed
     Process.sleep(:timer.seconds(5))
-    Port.command(port(consumer), :erlang.term_to_binary({:committed_offsets}))
+    KafkaClient.GenPort.command(port(consumer), :committed_offsets)
     assert_receive {:committed, offsets}
 
     assert Enum.sort(offsets) == [

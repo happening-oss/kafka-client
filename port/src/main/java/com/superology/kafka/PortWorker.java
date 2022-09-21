@@ -42,7 +42,7 @@ public class PortWorker implements Runnable {
     System.exit(0);
   }
 
-  public void command(Port.Command command) {
+  public void sendCommand(Port.Command command) {
     commands.add(command);
   }
 

@@ -38,14 +38,8 @@ class PortDriver {
       var worker = PortWorker.start(port, output, decodedArgs.toArray());
 
       while (true) {
-        var commandParts = nextCommand(input);
-
-        var name = (String) commandParts[0];
-        var commandArgs = new ArrayList<Object>();
-        for (int i = 1; i < commandParts.length; i++)
-          commandArgs.add(commandParts[i]);
-
-        worker.command(new Port.Command(name, commandArgs.toArray()));
+        var command = takeCommand(input);
+        worker.sendCommand(command);
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());
@@ -59,10 +53,18 @@ class PortDriver {
     return ErlangTermFormat.decode(bytes);
   }
 
-  private static Object[] nextCommand(DataInputStream input) throws Exception {
+  private static Port.Command takeCommand(DataInputStream input) throws Exception {
     var length = readInt(input);
     var bytes = readBytes(input, length);
-    return (Object[]) ErlangTermFormat.decode(bytes);
+    var commandTuple = (Object[]) ErlangTermFormat.decode(bytes);
+    return buildCommand(commandTuple);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Port.Command buildCommand(Object[] commandTuple) {
+    return new Port.Command(
+        (String) commandTuple[0],
+        ((Collection<Object>) commandTuple[1]).toArray());
   }
 
   private static int readInt(DataInputStream input) throws IOException {
