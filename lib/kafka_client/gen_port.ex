@@ -168,6 +168,16 @@ defmodule KafkaClient.GenPort do
 
       use GenServer, opts
       @behaviour behaviour
+
+      @impl behaviour
+      def handle_port_message(message, state) do
+        require Logger
+
+        Logger.warn("unhandled port message #{inspect(message)}")
+        {:noreply, state}
+      end
+
+      defoverridable handle_port_message: 2
     end
   end
 end
