@@ -95,13 +95,13 @@ defmodule KafkaClient.Consumer.Poller do
           | {:commit_interval, pos_integer}
           | {:consumer_params, %{String.t() => any}}
 
-  @type subscription :: topic | {topic, partition}
+  @type subscription :: KafkaClient.topic() | {KafkaClient.topic(), KafkaClient.partition()}
 
   @type record :: %{
           optional(atom) => any,
-          topic: topic,
-          partition: partition,
-          offset: offset,
+          topic: KafkaClient.topic(),
+          partition: KafkaClient.partition(),
+          offset: KafkaClient.offset(),
           timestamp: pos_integer(),
           headers: [{String.t(), binary}],
           key: String.t(),
@@ -121,14 +121,10 @@ defmodule KafkaClient.Consumer.Poller do
       - `{:record, record}` - a record is polled
   """
   @type notification ::
-          {:assigned, [{topic, partition}]}
-          | {:unassigned, [{topic, partition}]}
+          {:assigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
+          | {:unassigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
           | :caught_up
           | {:record, record}
-
-  @type topic :: String.t()
-  @type partition :: non_neg_integer
-  @type offset :: non_neg_integer
 
   @doc """
   Starts the poller process.
@@ -234,7 +230,8 @@ defmodule KafkaClient.Consumer.Poller do
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
 
   @doc "Returns committed offsets for the currently assigned partitions of this consumer."
-  @spec committed_offsets(GenServer.server()) :: [{topic, partition, offset}]
+  @spec committed_offsets(GenServer.server()) ::
+          [{KafkaClient.topic(), KafkaClient.partition(), KafkaClient.offset()}]
   def committed_offsets(server), do: GenPort.call(server, :committed_offsets)
 
   @impl GenServer

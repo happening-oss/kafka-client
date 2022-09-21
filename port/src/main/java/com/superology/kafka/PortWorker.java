@@ -50,4 +50,8 @@ public class PortWorker implements Runnable {
     commands.drainTo(result);
     return result;
   }
+
+  public Port.Command take() throws InterruptedException {
+    return commands.take();
+  }
 }

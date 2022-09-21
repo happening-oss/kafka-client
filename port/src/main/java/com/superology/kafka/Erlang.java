@@ -2,6 +2,8 @@ package com.superology.kafka;
 
 import java.io.*;
 import java.util.*;
+import java.util.function.Function;
+
 import com.ericsson.otp.erlang.*;
 
 /*
@@ -11,7 +13,7 @@ import com.ericsson.otp.erlang.*;
  * Most of the heavy lifting is powered by JInterface
  * (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html).
  */
-class ErlangTermFormat {
+class Erlang {
   // This is basically a Java version of Erlang's term_to_binary.
   public static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
     try (var otpOutStream = new OtpOutputStream(erlangTerm);
@@ -30,6 +32,32 @@ class ErlangTermFormat {
 
       return byteStream.toByteArray();
     }
+  }
+
+  public static OtpErlangTuple ok(OtpErlangObject value) {
+    return new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom("ok"), value });
+  }
+
+  public static OtpErlangTuple error(OtpErlangObject value) {
+    return new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom("error"), value });
+  }
+
+  public static <T> OtpErlangList toList(Collection<T> collection, Function<T, OtpErlangObject> mapper) {
+    var elements = collection.stream().map(mapper).toArray(OtpErlangObject[]::new);
+    return new OtpErlangList(elements);
+  }
+
+  public static <K, V> OtpErlangMap toMap(
+      Map<K, V> javaMap,
+      Function<Map.Entry<K, V>, AbstractMap.SimpleEntry<OtpErlangObject, OtpErlangObject>> mapper) {
+    var erlangMap = new OtpErlangMap();
+
+    for (var entry : javaMap.entrySet()) {
+      var erlangEntry = mapper.apply(entry);
+      erlangMap.put(erlangEntry.getKey(), erlangEntry.getValue());
+    }
+
+    return erlangMap;
   }
 
   /*
@@ -53,11 +81,11 @@ class ErlangTermFormat {
 
   private static Object fromErlang(OtpErlangObject value) throws Exception {
     if (value instanceof OtpErlangList)
-      return ErlangTermFormat.fromErlangList((OtpErlangList) value);
+      return Erlang.fromErlangList((OtpErlangList) value);
     else if (value instanceof OtpErlangTuple)
-      return ErlangTermFormat.fromErlangList(Arrays.asList(((OtpErlangTuple) value).elements())).toArray();
+      return Erlang.fromErlangList(Arrays.asList(((OtpErlangTuple) value).elements())).toArray();
     else if (value instanceof OtpErlangMap)
-      return ErlangTermFormat.fromErlangMap((OtpErlangMap) value);
+      return Erlang.fromErlangMap((OtpErlangMap) value);
     else if (value instanceof OtpErlangBinary)
       return new String(((OtpErlangBinary) value).binaryValue());
     else if (value instanceof OtpErlangLong) {

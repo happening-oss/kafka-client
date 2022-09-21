@@ -70,7 +70,7 @@ final class PortOutput implements Runnable {
   }
 
   private void notify(DataOutputStream output, OtpErlangObject erlangTerm) throws IOException {
-    byte[] payload = ErlangTermFormat.encode(erlangTerm);
+    byte[] payload = Erlang.encode(erlangTerm);
 
     // writing to the port
 

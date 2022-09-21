@@ -72,8 +72,12 @@ defmodule KafkaClient.Test.Helper do
 
   def recreate_topics(topics) do
     topics
+    |> Enum.map(&with string when is_binary(string) <- &1, do: {string, []})
     |> Task.async_stream(
-      &KafkaClient.TestAdmin.recreate_topic(brokers(), &1, num_partitions: 2),
+      fn {topic, opts} ->
+        opts = Keyword.merge([num_partitions: 2], opts)
+        KafkaClient.TestAdmin.recreate_topic(brokers(), topic, opts)
+      end,
       timeout: :timer.seconds(10)
     )
     |> Stream.run()

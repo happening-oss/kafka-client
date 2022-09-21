@@ -50,13 +50,13 @@ class PortDriver {
 
   private static Object decodeArg(String encoded) throws Exception {
     var bytes = java.util.Base64.getDecoder().decode(encoded);
-    return ErlangTermFormat.decode(bytes);
+    return Erlang.decode(bytes);
   }
 
   private static Port.Command takeCommand(DataInputStream input) throws Exception {
     var length = readInt(input);
     var bytes = readBytes(input, length);
-    var commandTuple = (Object[]) ErlangTermFormat.decode(bytes);
+    var commandTuple = (Object[]) Erlang.decode(bytes);
     return buildCommand(commandTuple);
   }
 
