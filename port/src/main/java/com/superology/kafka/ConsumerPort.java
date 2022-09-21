@@ -32,7 +32,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   @Override
   @SuppressWarnings("unchecked")
-  public void run(PortWorker worker, PortOutput output, Object[] args) {
+  public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     this.output = output;
     var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
 
@@ -73,10 +73,6 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
           backpressure.recordPolled(record);
         }
       }
-    } catch (Exception e) {
-      System.err.println(e.getMessage());
-      e.printStackTrace();
-      System.exit(1);
     }
   }
 

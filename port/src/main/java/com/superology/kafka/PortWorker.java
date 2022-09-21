@@ -33,13 +33,12 @@ public class PortWorker implements Runnable {
   public void run() {
     try {
       port.run(this, output, args);
+      System.exit(0);
     } catch (Exception e) {
       System.err.println(e.getMessage());
       e.printStackTrace();
       System.exit(1);
     }
-
-    System.exit(0);
   }
 
   public void sendCommand(Port.Command command) {
