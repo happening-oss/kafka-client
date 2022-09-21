@@ -73,7 +73,7 @@ defmodule KafkaClient.Test.Helper do
   def recreate_topics(topics) do
     topics
     |> Task.async_stream(
-      &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
+      &KafkaClient.TestAdmin.recreate_topic(brokers(), &1, num_partitions: 2),
       timeout: :timer.seconds(10)
     )
     |> Stream.run()

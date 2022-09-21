@@ -29,7 +29,7 @@ final class PortOutput implements Runnable {
     messages = new LinkedBlockingQueue<Message>();
   }
 
-  public void emitCallresponse(Port.Command command, OtpErlangObject response) throws InterruptedException {
+  public void emitCallResponse(Port.Command command, OtpErlangObject response) throws InterruptedException {
     emit(new OtpErlangTuple(new OtpErlangObject[] {
         new OtpErlangAtom("$kafka_consumer_response"),
         new OtpErlangBinary(command.ref().getBytes()),

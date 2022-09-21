@@ -120,7 +120,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         break;
 
       case "committed_offsets":
-        output.emitCallresponse(
+        output.emitCallResponse(
             command,
             committedOffsetsToOtp(consumer.committed(consumer.assignment())));
         break;

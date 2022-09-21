@@ -35,7 +35,7 @@ transfers = :ets.new(:transfers, [:public, write_concurrency: true])
 )
 
 IO.puts("recreating topic #{topic}")
-KafkaClient.Admin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
+KafkaClient.TestAdmin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
 
 IO.puts("producing messages")
 :ok = :brod.start_client(brokers, :test_client, auto_start_producers: true)

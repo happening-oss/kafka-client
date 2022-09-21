@@ -1,5 +1,5 @@
 if Mix.env() in [:dev, :test] do
-  defmodule KafkaClient.Admin do
+  defmodule KafkaClient.TestAdmin do
     @moduledoc false
 
     def recreate_topic(brokers, topic, opts \\ []) do
