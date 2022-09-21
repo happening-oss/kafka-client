@@ -275,23 +275,6 @@ defmodule KafkaClient.Consumer.Poller do
     {:noreply, state}
   end
 
-  def handle_port_message({:metrics, transfer_time, duration}, state) do
-    transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
-    duration = System.convert_time_unit(duration, :nanosecond, :native)
-
-    :telemetry.execute(
-      [:kafka_client, :consumer, :port, :stop],
-      %{
-        system_time: System.system_time(),
-        transfer_time: transfer_time,
-        duration: duration
-      },
-      %{}
-    )
-
-    {:noreply, state}
-  end
-
   def handle_port_message(message, state) do
     notify_processor(state, message)
     {:noreply, state}

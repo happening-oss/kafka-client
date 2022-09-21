@@ -62,28 +62,16 @@ defmodule KafkaClient.GenPort do
   end
 
   @impl GenServer
-  def handle_info({port, {:exit_status, status}} = message, state) do
-    if port == port(),
-      do: handle_port_terminated(status, state),
-      else: callback().handle_info(message, state)
-  end
+  def handle_info({port, {:exit_status, status}}, state) when is_port(port),
+    do: handle_port_terminated(status, state)
 
   @impl GenServer
-  def handle_info({port, {:data, data}} = message, state) do
-    if port == port() do
-      term = :erlang.binary_to_term(data)
+  def handle_info({port, {:data, data}}, state) when is_port(port) do
+    term = :erlang.binary_to_term(data)
 
-      case decode_call_response(term) do
-        {:ok, from, response} ->
-          GenServer.reply(from, response)
-          {:noreply, state}
-
-        :error ->
-          callback().handle_port_message(term, state)
-      end
-    else
-      callback().handle_info(message, state)
-    end
+    if handle_special_port_message(term),
+      do: {:noreply, state},
+      else: callback().handle_port_message(term, state)
   end
 
   def handle_info(message, state),
@@ -106,6 +94,32 @@ defmodule KafkaClient.GenPort do
     Logger.error("unexpected port exit with status #{exit_status}")
     {:stop, :port_crash, %{state | port: nil}}
   end
+
+  defp handle_special_port_message({:"$kafka_consumer_response", ref, reply}) do
+    {from, calls} = Map.pop!(calls(), ref)
+    Process.put({__MODULE__, :calls}, calls)
+    GenServer.reply(from, reply)
+    true
+  end
+
+  defp handle_special_port_message({:metrics, transfer_time, duration}) do
+    transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
+    duration = System.convert_time_unit(duration, :nanosecond, :native)
+
+    :telemetry.execute(
+      [:kafka_client, :consumer, :port, :stop],
+      %{
+        system_time: System.system_time(),
+        transfer_time: transfer_time,
+        duration: duration
+      },
+      %{}
+    )
+
+    true
+  end
+
+  defp handle_special_port_message(_other), do: nil
 
   defp open(main_class, args) do
     encoded_args = Enum.map(args, &(&1 |> :erlang.term_to_binary() |> Base.encode64()))
@@ -144,17 +158,6 @@ defmodule KafkaClient.GenPort do
     ref = tag |> :erlang.term_to_binary() |> Base.encode64(padding: false)
     Process.put({__MODULE__, :calls}, Map.put(calls(), ref, from))
     ref
-  end
-
-  defp decode_call_response(term) do
-    with {:"$kafka_consumer_response", ref, response} <- term do
-      {from, calls} = Map.pop!(calls(), ref)
-      Process.put({__MODULE__, :calls}, calls)
-      {:ok, from, response}
-    else
-      _ ->
-        :error
-    end
   end
 
   defp calls(), do: Process.get({__MODULE__, :calls}, %{})
