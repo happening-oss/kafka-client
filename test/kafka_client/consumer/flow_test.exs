@@ -4,32 +4,60 @@ defmodule KafkaClient.Consumer.FlowTest do
 
   test "clean termination" do
     group_id = unique("test_group")
-    consumer = start_consumer!(group_id: group_id)
+    consumer = start_consumer!(group_id: group_id, drain: :timer.seconds(1))
 
     [topic] = consumer.subscriptions
 
+    # produce some messages on paritions 0 and 1
     produce(topic, partition: 0)
     produce(topic, partition: 0)
+    partition0_record3 = produce(topic, partition: 0)
+
+    partition1_record1 = produce(topic, partition: 1)
+    produce(topic, partition: 1)
+    produce(topic, partition: 1)
 
     process_next_record!(topic, 0)
-    processing_during_shutdown = assert_processing(topic, 0)
+    partition0_processing_during_shutdown = assert_processing(topic, 0)
+    partition1_processing_during_shutdown = assert_processing(topic, 1)
 
     os_pid = os_pid(port(consumer))
-    assert os_process_alive?(os_pid)
 
-    stop_consumer(consumer)
-    refute Process.alive?(processing_during_shutdown.pid)
+    mref_consumer = Process.monitor(consumer.pid)
+    mref_processor_partition0 = Process.monitor(partition0_processing_during_shutdown.pid)
+    mref_processor_partition1 = Process.monitor(partition1_processing_during_shutdown.pid)
 
-    eventually(fn -> refute os_process_alive?(os_pid) end, attempts: 500, delay: 10)
+    # we need to stop the consumer from a separate process, to avoid blocking this process
+    spawn(fn -> KafkaClient.Consumer.stop(consumer.pid) end)
 
-    start_consumer!(
-      group_id: group_id,
-      subscriptions: consumer.subscriptions,
-      recreate_topics?: false
-    )
+    # sleep a bit to ensure that the termination is in progress, then instruct the processor
+    # on partition 0 to resume processing the current message
+    Process.sleep(500)
+    resume_processing(partition0_processing_during_shutdown)
 
-    processing_after_shutdown = assert_processing(topic, 0)
-    assert processing_after_shutdown.offset == processing_during_shutdown.offset
+    # check that the consumer is down, and that the Java process stopped
+    assert_receive {:DOWN, ^mref_consumer, :process, _pid, _reason}, :timer.seconds(2)
+    refute os_process_alive?(os_pid)
+
+    # the processor on partition 0 should have stopped normally, because it finished processing
+    # the message in the given time
+    assert_received {:DOWN, ^mref_processor_partition0, :process, _pid, :normal}
+
+    # the processor on partition 1 should be brutally killed, because it didn't finish processing
+    # the message in the given time
+    assert_received {:DOWN, ^mref_processor_partition1, :process, _pid, :killed}
+
+    # we'll now start another consumer in the same consumer group, and check that commits have
+    # been flushed
+    start_consumer!(group_id: group_id, subscriptions: [topic], recreate_topics?: false)
+
+    # on partition 0 we should start with the 3rd record, since the first two have been processed
+    partition0_processing_after_shutdown = assert_processing(topic, 0)
+    assert partition0_processing_after_shutdown.offset == partition0_record3.offset
+
+    # on partition 1 we should start with the first record, since nothing was processed
+    partition1_processing_after_shutdown = assert_processing(topic, 1)
+    assert partition1_processing_after_shutdown.offset == partition1_record1.offset
   end
 
   test "partitions lost notification" do
