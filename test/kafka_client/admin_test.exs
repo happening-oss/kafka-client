@@ -1,8 +1,8 @@
 defmodule KafkaClient.AdminTest do
   use ExUnit.Case, async: true
 
-  alias KafkaClient.Admin
   import KafkaClient.Test.Helper
+  alias KafkaClient.Admin
 
   test "describe_topics" do
     topic1 = new_test_topic()
