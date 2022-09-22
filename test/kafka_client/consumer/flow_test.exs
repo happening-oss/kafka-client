@@ -20,8 +20,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     stop_consumer(consumer)
     refute Process.alive?(processing_during_shutdown.pid)
 
-    Process.sleep(100)
-    refute os_process_alive?(os_pid)
+    eventually(fn -> refute os_process_alive?(os_pid) end, attempts: 500, delay: 10)
 
     start_consumer!(
       group_id: group_id,

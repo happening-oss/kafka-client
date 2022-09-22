@@ -58,15 +58,18 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     process_next_record!(topic, 1)
     last_processed_record_partition_1 = process_next_record!(topic, 1)
 
-    # wait a bit to ensure that the processed records are committed
-    Process.sleep(:timer.seconds(5))
+    eventually(
+      fn ->
+        offsets = KafkaClient.Consumer.Poller.committed_offsets(poller(consumer))
 
-    offsets = KafkaClient.Consumer.Poller.committed_offsets(poller(consumer))
-
-    assert Enum.sort(offsets) == [
-             {topic, 0, last_processed_record_partition_0.offset + 1},
-             {topic, 1, last_processed_record_partition_1.offset + 1}
-           ]
+        assert Enum.sort(offsets) == [
+                 {topic, 0, last_processed_record_partition_0.offset + 1},
+                 {topic, 1, last_processed_record_partition_1.offset + 1}
+               ]
+      end,
+      attempts: 20,
+      delay: 500
+    )
   end
 
   test "stream" do

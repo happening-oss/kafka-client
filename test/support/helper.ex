@@ -186,4 +186,16 @@ defmodule KafkaClient.Test.Helper do
 
   def servers, do: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end)
   defp brokers, do: [{"localhost", 9092}]
+
+  def eventually(fun, opts \\ []),
+    do: eventually(fun, Keyword.get(opts, :attempts, 10), Keyword.get(opts, :delay, 100))
+
+  defp eventually(fun, attempts, delay) do
+    fun.()
+  rescue
+    e in [ExUnit.AssertionError] ->
+      if attempts == 1, do: reraise(e, __STACKTRACE__)
+      Process.sleep(delay)
+      eventually(fun, attempts - 1, delay)
+  end
 end
