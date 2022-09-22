@@ -29,6 +29,15 @@ defmodule KafkaClient.GenPort do
     )
   end
 
+  @doc "Synchronously stops the process."
+  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  def stop(server, timeout \\ :infinity) do
+    case GenServer.whereis(server) do
+      pid when is_pid(pid) -> GenServer.stop(server, :normal, timeout)
+      nil -> {:error, :not_found}
+    end
+  end
+
   def command(port, name, args \\ [], ref \\ nil) do
     Port.command(port, :erlang.term_to_binary({name, args, ref}))
     :ok

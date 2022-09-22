@@ -119,4 +119,4 @@ java -> elixir transfer time: #{transfer_times}
 
 """)
 
-GenServer.stop(consumer_pid)
+KafkaClient.Consumer.stop(consumer_pid)

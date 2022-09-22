@@ -107,8 +107,26 @@ defmodule KafkaClient.Consumer do
     - `kafka_client.consumer.record.handler.stop.duration`
     - `kafka_client.consumer.record.handler.exception.duration`
   """
-  @spec start_link([Poller.option() | {:handler, handler}]) :: GenServer.on_start()
-  def start_link(opts), do: Parent.GenServer.start_link(__MODULE__, opts)
+  @spec start_link([Poller.option() | {:handler, handler} | {:name, GenServer.name()}]) ::
+          GenServer.on_start()
+  def start_link(opts) do
+    gen_server_opts = ~w/name/a
+
+    Parent.GenServer.start_link(
+      __MODULE__,
+      Keyword.drop(opts, gen_server_opts),
+      Keyword.take(opts, gen_server_opts)
+    )
+  end
+
+  @doc "Synchronously stops the consumer process."
+  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  def stop(server, timeout \\ :infinity) do
+    case GenServer.whereis(server) do
+      pid when is_pid(pid) -> GenServer.stop(server, :normal, timeout)
+      nil -> {:error, :not_found}
+    end
+  end
 
   @impl GenServer
   def init(opts) do

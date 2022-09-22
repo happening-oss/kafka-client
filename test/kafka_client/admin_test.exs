@@ -17,4 +17,12 @@ defmodule KafkaClient.AdminTest do
     assert {:error, error} = Admin.describe_topics(pid, ["unknown_topic"])
     assert error == "This server does not host this topic-partition."
   end
+
+  test "stop" do
+    registered_name = :"#{unique("consumer")}"
+    admin = start_supervised!({Admin, name: registered_name, servers: ["localhost:9092"]})
+    mref = Process.monitor(admin)
+    Admin.stop(registered_name)
+    assert_receive {:DOWN, ^mref, :process, _pid, _reason}
+  end
 end

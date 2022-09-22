@@ -176,13 +176,14 @@ defmodule KafkaClient.Consumer.Poller do
       __MODULE__,
       Keyword.fetch!(opts, :processor),
       "ConsumerPort",
-      [consumer_params, subscriptions, poller_properties]
+      [consumer_params, subscriptions, poller_properties],
+      Keyword.take(opts, ~w/name/a)
     )
   end
 
   @doc "Synchronously stops the poller process."
-  @spec stop(GenServer.server()) :: :ok
-  def stop(pid), do: GenServer.stop(pid)
+  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
   @doc """
   Informs the poller that the record processing has been started.

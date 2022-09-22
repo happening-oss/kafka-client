@@ -15,15 +15,19 @@ defmodule KafkaClient.Test.Helper do
     test_pid = self()
     child_id = make_ref()
 
+    opts =
+      [
+        servers: servers(),
+        group_id: group_id,
+        subscriptions: subscriptions,
+        handler: &handle_consumer_event(&1, test_pid),
+        commit_interval: 50,
+        consumer_params: Keyword.get(opts, :consumer_params, %{})
+      ] ++ Keyword.take(opts, ~w/name/a)
+
     consumer_pid =
       ExUnit.Callbacks.start_supervised!(
-        {KafkaClient.Consumer,
-         servers: servers(),
-         group_id: group_id,
-         subscriptions: subscriptions,
-         handler: &handle_consumer_event(&1, test_pid),
-         commit_interval: 50,
-         consumer_params: Keyword.get(opts, :consumer_params, %{})},
+        {KafkaClient.Consumer, opts},
         id: child_id,
         restart: :temporary
       )
@@ -41,7 +45,8 @@ defmodule KafkaClient.Test.Helper do
 
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    assert_receive({:assigned, _partitions}, :timer.seconds(10))
+    unless Keyword.get(opts, :await_assigned?, true),
+      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
     %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions}
   end
