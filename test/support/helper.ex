@@ -1,7 +1,16 @@
 defmodule KafkaClient.Test.Helper do
   import ExUnit.Assertions
 
+  def eventually(fun, opts \\ []),
+    do: eventually(fun, Keyword.get(opts, :attempts, 10), Keyword.get(opts, :delay, 100))
+
   def unique(prefix), do: "#{prefix}_#{System.unique_integer([:positive, :monotonic])}"
+
+  def unique_atom(prefix) do
+    # Can't avoid dynamic atom creation, and this is used only in tests, so disabling the check
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
+    :"#{unique(prefix)}"
+  end
 
   def initialize_producer! do
     :ok = :brod.start_client(brokers(), :test_client, auto_start_producers: true)
@@ -49,60 +58,6 @@ defmodule KafkaClient.Test.Helper do
       do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
     %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions}
-  end
-
-  defp subscriptions(opts) do
-    subscriptions =
-      Keyword.get_lazy(
-        opts,
-        :subscriptions,
-        fn ->
-          Enum.map(
-            1..Keyword.get(opts, :num_topics, 1)//1,
-            fn _ -> new_test_topic() end
-          )
-        end
-      )
-
-    if Keyword.get(opts, :recreate_topics?, true) do
-      subscriptions
-      |> Enum.map(&with {topic, _partition} <- &1, do: topic)
-      |> recreate_topics()
-    end
-
-    subscriptions
-  end
-
-  def new_test_topic, do: unique("kafka_client_test_topic")
-
-  def recreate_topics(topics) do
-    topics
-    |> Enum.map(&with string when is_binary(string) <- &1, do: {string, []})
-    |> Task.async_stream(
-      fn {topic, opts} ->
-        opts = Keyword.merge([num_partitions: 2], opts)
-        KafkaClient.TestAdmin.recreate_topic(brokers(), topic, opts)
-      end,
-      timeout: :timer.seconds(10)
-    )
-    |> Stream.run()
-  end
-
-  defp handle_consumer_event({event_name, _} = event, test_pid)
-       when event_name in ~w/assigned unassigned polled committed/a,
-       do: send(test_pid, event)
-
-  defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
-
-  defp handle_consumer_event({:record, record}, test_pid) do
-    send(test_pid, {:processing, Map.put(record, :pid, self())})
-
-    receive do
-      :consume -> :ok
-      {:crash, reason} -> raise reason
-    end
-
-    send(test_pid, {:processed, record.topic, record.partition, record.offset})
   end
 
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
@@ -190,10 +145,62 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def servers, do: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end)
-  defp brokers, do: [{"localhost", 9092}]
 
-  def eventually(fun, opts \\ []),
-    do: eventually(fun, Keyword.get(opts, :attempts, 10), Keyword.get(opts, :delay, 100))
+  def new_test_topic, do: unique("kafka_client_test_topic")
+
+  def recreate_topics(topics) do
+    topics
+    |> Enum.map(&with string when is_binary(string) <- &1, do: {string, []})
+    |> Task.async_stream(
+      fn {topic, opts} ->
+        opts = Keyword.merge([num_partitions: 2], opts)
+        KafkaClient.TestAdmin.recreate_topic(brokers(), topic, opts)
+      end,
+      timeout: :timer.seconds(10)
+    )
+    |> Stream.run()
+  end
+
+  defp subscriptions(opts) do
+    subscriptions =
+      Keyword.get_lazy(
+        opts,
+        :subscriptions,
+        fn ->
+          Enum.map(
+            1..Keyword.get(opts, :num_topics, 1)//1,
+            fn _ -> new_test_topic() end
+          )
+        end
+      )
+
+    if Keyword.get(opts, :recreate_topics?, true) do
+      subscriptions
+      |> Enum.map(&with {topic, _partition} <- &1, do: topic)
+      |> recreate_topics()
+    end
+
+    subscriptions
+  end
+
+  defp handle_consumer_event({event_name, _} = event, test_pid)
+       when event_name in ~w/assigned unassigned polled committed/a,
+       do: send(test_pid, event)
+
+  defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
+
+  defp handle_consumer_event({:record, record}, test_pid) do
+    send(test_pid, {:processing, Map.put(record, :pid, self())})
+
+    receive do
+      :consume -> :ok
+      {:crash, reason} -> raise reason
+    end
+
+    send(test_pid, {:processed, record.topic, record.partition, record.offset})
+  end
+
+  defp brokers, do: [{"localhost", 9092}]
 
   defp eventually(fun, attempts, delay) do
     fun.()

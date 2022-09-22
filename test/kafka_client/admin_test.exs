@@ -1,8 +1,8 @@
 defmodule KafkaClient.AdminTest do
   use ExUnit.Case, async: true
 
-  alias KafkaClient.Admin
   import KafkaClient.Test.Helper
+  alias KafkaClient.Admin
 
   test "describe_topics" do
     topic1 = new_test_topic()
@@ -19,7 +19,7 @@ defmodule KafkaClient.AdminTest do
   end
 
   test "stop" do
-    registered_name = :"#{unique("consumer")}"
+    registered_name = unique_atom("admin")
     admin = start_supervised!({Admin, name: registered_name, servers: ["localhost:9092"]})
     mref = Process.monitor(admin)
     Admin.stop(registered_name)

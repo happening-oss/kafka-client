@@ -25,10 +25,11 @@ defmodule KafkaClient.MixProject do
   defp deps do
     [
       {:brod, "~> 3.16", only: [:dev, :test]},
+      {:credo, "~> 1.6", only: [:dev, :test]},
       {:dialyxir, "~> 1.2", only: [:dev, :test], runtime: false},
       {:parent, "~> 0.12"},
-      {:telemetry, "~> 1.0"},
-      {:statistex, "~> 1.0", only: [:dev, :test]}
+      {:statistex, "~> 1.0", only: [:dev, :test]},
+      {:telemetry, "~> 1.0"}
     ]
   end
 

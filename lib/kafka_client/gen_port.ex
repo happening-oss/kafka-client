@@ -21,6 +21,25 @@ defmodule KafkaClient.GenPort do
               | {:noreply, state, timeout() | :hibernate | {:continue, continue_arg :: term()}}
               | {:stop, reason :: term(), state}
 
+  defmacro __using__(opts) do
+    quote location: :keep, bind_quoted: [opts: opts, behaviour: __MODULE__] do
+      opts = Keyword.put_new(opts, :shutdown, :infinity)
+
+      use GenServer, opts
+      @behaviour behaviour
+
+      @impl behaviour
+      def handle_port_message(message, state) do
+        require Logger
+
+        Logger.warn("unhandled port message #{inspect(message)}")
+        {:noreply, state}
+      end
+
+      defoverridable handle_port_message: 2
+    end
+  end
+
   @spec start_link(module, any, String.t(), [term], name: GenServer.name()) :: {:ok, pid}
   def start_link(callback, callback_arg, main_class, port_args, gen_server_opts \\ []) do
     GenServer.start_link(
@@ -45,7 +64,7 @@ defmodule KafkaClient.GenPort do
   end
 
   @spec port :: port
-  def port(), do: Process.get({__MODULE__, :port})
+  def port, do: Process.get({__MODULE__, :port})
 
   @spec call(GenServer.server(), atom, [term], pos_integer | :infinity) :: term
   def call(server, name, args \\ [], timeout \\ :timer.seconds(5)) do
@@ -164,7 +183,7 @@ defmodule KafkaClient.GenPort do
     end
   end
 
-  defp callback(), do: Process.get({__MODULE__, :callback})
+  defp callback, do: Process.get({__MODULE__, :callback})
 
   defp store_call({_pid, tag} = from) do
     ref = tag |> :erlang.term_to_binary() |> Base.encode64(padding: false)
@@ -172,24 +191,5 @@ defmodule KafkaClient.GenPort do
     ref
   end
 
-  defp calls(), do: Process.get({__MODULE__, :calls}, %{})
-
-  defmacro __using__(opts) do
-    quote location: :keep, bind_quoted: [opts: opts, behaviour: __MODULE__] do
-      opts = Keyword.put_new(opts, :shutdown, :infinity)
-
-      use GenServer, opts
-      @behaviour behaviour
-
-      @impl behaviour
-      def handle_port_message(message, state) do
-        require Logger
-
-        Logger.warn("unhandled port message #{inspect(message)}")
-        {:noreply, state}
-      end
-
-      defoverridable handle_port_message: 2
-    end
-  end
+  defp calls, do: Process.get({__MODULE__, :calls}, %{})
 end
