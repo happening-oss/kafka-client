@@ -4,13 +4,13 @@ defmodule KafkaClient.ConsumerTest do
   import KafkaClient.Test.Helper
 
   test "named registration" do
-    registered_name = :"#{unique("consumer")}"
+    registered_name = unique_atom("consumer")
     consumer = start_named_consumer(registered_name)
     assert Process.whereis(registered_name) == consumer.pid
   end
 
   test "stop" do
-    registered_name = :"#{unique("consumer")}"
+    registered_name = unique_atom("consumer")
     consumer = start_named_consumer(registered_name)
     mref = Process.monitor(consumer.pid)
     KafkaClient.Consumer.stop(registered_name)

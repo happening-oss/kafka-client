@@ -3,6 +3,12 @@ defmodule KafkaClient.Test.Helper do
 
   def unique(prefix), do: "#{prefix}_#{System.unique_integer([:positive, :monotonic])}"
 
+  def unique_atom(prefix) do
+    # Can't avoid dynamic atom creation, and this is used only in tests, so disabling the check
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
+    :"#{unique(prefix)}"
+  end
+
   def initialize_producer! do
     :ok = :brod.start_client(brokers(), :test_client, auto_start_producers: true)
   end
