@@ -144,7 +144,8 @@ defmodule KafkaClient.Consumer.Poller do
     - `:consumer_params` - a `String.t => any` map passed directly to the Java Kafka client.
       See https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html for details.
   """
-  @spec start_link([option | {:processor, pid}]) :: GenServer.on_start()
+  @spec start_link([option | {:processor, pid} | {:name, GenServer.name()}]) ::
+          GenServer.on_start()
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
     subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&normalize_subscription/1)

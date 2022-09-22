@@ -9,7 +9,7 @@ defmodule KafkaClient.Admin do
   use KafkaClient.GenPort
   alias KafkaClient.GenPort
 
-  @spec start_link(servers: String.t()) :: {:ok, pid}
+  @spec start_link(servers: String.t(), name: GenServer.name()) :: {:ok, pid}
   def start_link(opts) do
     GenPort.start_link(
       __MODULE__,

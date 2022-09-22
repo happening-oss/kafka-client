@@ -21,6 +21,7 @@ defmodule KafkaClient.GenPort do
               | {:noreply, state, timeout() | :hibernate | {:continue, continue_arg :: term()}}
               | {:stop, reason :: term(), state}
 
+  @spec start_link(module, any, String.t(), [term], name: GenServer.name()) :: {:ok, pid}
   def start_link(callback, callback_arg, main_class, port_args, gen_server_opts \\ []) do
     GenServer.start_link(
       __MODULE__,
@@ -29,7 +30,6 @@ defmodule KafkaClient.GenPort do
     )
   end
 
-  @doc "Synchronously stops the process."
   @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
   def stop(server, timeout \\ :infinity) do
     case GenServer.whereis(server) do
@@ -38,13 +38,16 @@ defmodule KafkaClient.GenPort do
     end
   end
 
+  @spec command(port, atom, [term], String.t() | nil) :: :ok
   def command(port, name, args \\ [], ref \\ nil) do
     Port.command(port, :erlang.term_to_binary({name, args, ref}))
     :ok
   end
 
+  @spec port :: port
   def port(), do: Process.get({__MODULE__, :port})
 
+  @spec call(GenServer.server(), atom, [term], pos_integer | :infinity) :: term
   def call(server, name, args \\ [], timeout \\ :timer.seconds(5)) do
     server
     |> GenServer.whereis()
