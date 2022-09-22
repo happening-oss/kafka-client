@@ -31,7 +31,8 @@ defmodule KafkaClient.Test.Helper do
         subscriptions: subscriptions,
         handler: &handle_consumer_event(&1, test_pid),
         commit_interval: 50,
-        consumer_params: Keyword.get(opts, :consumer_params, %{})
+        consumer_params: Keyword.get(opts, :consumer_params, %{}),
+        drain: Keyword.get(opts, :drain, 0)
       ] ++ Keyword.take(opts, ~w/name/a)
 
     consumer_pid =

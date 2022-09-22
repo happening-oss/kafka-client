@@ -88,15 +88,25 @@ defmodule KafkaClient.Consumer do
   with `Task.await` in the handler is fine, as long as you can be certain that tasks won't crash,
   or that the `await` won't time out.
 
-  ### Shutdown and unassigned behaviour
+  ### Draining
 
-  For efficiency reasons, the consumer aggregates pending commits, and submits them to the broker
-  periodically. If a partition is unassigned, the consumer will attempt to flush all pending
-  commits. The related partition process is then forcefully terminated. Likewise, on shutdown, the
-  consumer will attempt to flush all pending commits on all topics, and forcefully terminate all
-  partition processes. The consumer won't wait for the currently running handlers to finish, nor
-  will it attempt to drain the current buffer (i.e. records already polled from Kafka). This
-  approach reduces (but doesn't remove) the chance of a record being processed more than once.
+  If the consumer is being completely stopped (e.g. as a part of the normal system shutdown), it
+  will wait a bit until all of the currently running invocations of the `handler` function finish.
+  The remaining messages waiting in the queue will not be processed.
+
+  The default waiting time is 5 seconds. Processors taking longer to finish will be forcefully
+  terminated. The consumer will drain its processors concurrently. A drain time of 5 seconds means
+  that the consumer will wait 5 seconds for all of the processors to finish. The drain time can be
+  configured via the `:drain` option. Setting this value to zero effectively turns off the draining
+  behaviour.
+
+  The consumer will also attempt to flush the committed offsets to Kafka. This happens after the
+  processors are drained. The consumer will wait for additional 5 seconds for the commits to be
+  flushed. This behaviour is not configurable.
+
+  Draining also happens when some partitions are lost. However, in this case the offsets of the
+  drained messages will not be committed to Kafka (because at this point the partitions are already
+  unassigned from the consumer).
 
   ## Telemetry
 
@@ -107,7 +117,12 @@ defmodule KafkaClient.Consumer do
     - `kafka_client.consumer.record.handler.stop.duration`
     - `kafka_client.consumer.record.handler.exception.duration`
   """
-  @spec start_link([Poller.option() | {:handler, handler} | {:name, GenServer.name()}]) ::
+  @spec start_link([
+          Poller.option()
+          | {:handler, handler}
+          | {:drain, non_neg_integer}
+          | {:name, GenServer.name()}
+        ]) ::
           GenServer.on_start()
   def start_link(opts) do
     gen_server_opts = ~w/name/a
@@ -131,6 +146,7 @@ defmodule KafkaClient.Consumer do
   @impl GenServer
   def init(opts) do
     {handler, opts} = Keyword.pop!(opts, :handler)
+    {drain, opts} = Keyword.pop(opts, :drain, :timer.seconds(5))
 
     {:ok, poller} =
       Parent.start_child(
@@ -140,7 +156,15 @@ defmodule KafkaClient.Consumer do
         ephemeral?: true
       )
 
-    {:ok, %{handler: handler, poller: poller}}
+    {:ok, %{handler: handler, poller: poller, drain: drain}}
+  end
+
+  @impl GenServer
+  def terminate(_reason, state) do
+    Parent.children()
+    |> Enum.filter(&match?({:processor, _id}, &1.id))
+    |> Enum.map(& &1.pid)
+    |> stop_processors(state)
   end
 
   @impl GenServer
@@ -161,13 +185,19 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_poller_message({:unassigned, partitions} = event, state) do
-    Enum.each(partitions, &Parent.shutdown_child({:processor, &1}))
+    partitions
+    |> Enum.map(fn partition ->
+      {:ok, pid} = Parent.child_pid({:processor, partition})
+      pid
+    end)
+    |> stop_processors(state)
+
     state.handler.(event)
   end
 
   defp handle_poller_message({:record, record}, _state) do
     {:ok, pid} = Parent.child_pid({:processor, {record.topic, record.partition}})
-    PartitionProcessor.handle_record(pid, record)
+    PartitionProcessor.process_record(pid, record)
   end
 
   defp handle_poller_message(message, state),
@@ -182,13 +212,23 @@ defmodule KafkaClient.Consumer do
             {PartitionProcessor, handler},
             id: {:processor, {topic, partition}},
             restart: :temporary,
-            ephemeral?: true,
-
-            # We want to kill the processor immediately, and stop any currently running processor,
-            # even if the processor is trapping exits.
-            shutdown: :brutal_kill
+            ephemeral?: true
           )
       end
     )
+  end
+
+  defp stop_processors(processors, state) do
+    if state.drain > 0 do
+      processors
+      |> Enum.map(&Task.async(PartitionProcessor, :drain, [&1, state.drain]))
+      # Infinity is fine, since each drain is performed with a timeout (state.drain)
+      |> Enum.each(&Task.await(&1, :infinity))
+    end
+
+    # Although the processors might have been stopped at this point, we still need to shut them
+    # down via Parent, to ensure they are removed from the Parent's internal structure. Otherwise,
+    # we'll receive an unexpected `handle_stopped_children`, and the consumer will stop.
+    Enum.each(processors, &Parent.shutdown_child/1)
   end
 end
