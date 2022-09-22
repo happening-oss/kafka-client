@@ -4,7 +4,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
   test "sequential processing on a single topic-partition" do
     consumer = start_consumer!()
-    [topic] = consumer.topics
+    [topic] = consumer.subscriptions
 
     produced1 = produce(topic, partition: 0)
     produced2 = produce(topic, partition: 0)
@@ -28,7 +28,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
   test "concurrent processing" do
     consumer = start_consumer!(num_topics: 2)
-    [topic1, topic2] = consumer.topics
+    [topic1, topic2] = consumer.subscriptions
 
     produce(topic1, partition: 0)
     produce(topic1, partition: 1)
@@ -41,7 +41,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
   test "processed messages are committed" do
     consumer = start_consumer!()
-    [topic] = consumer.topics
+    [topic] = consumer.subscriptions
 
     produce(topic, partition: 0)
     produce(topic, partition: 0)
@@ -58,15 +58,18 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     process_next_record!(topic, 1)
     last_processed_record_partition_1 = process_next_record!(topic, 1)
 
-    # wait a bit to ensure that the processed records are committed
-    Process.sleep(1000)
-    Port.command(port(consumer), :erlang.term_to_binary({:committed_offsets}))
-    assert_receive {:committed, offsets}
+    eventually(
+      fn ->
+        offsets = KafkaClient.Consumer.Poller.committed_offsets(poller(consumer))
 
-    assert Enum.sort(offsets) == [
-             {topic, 0, last_processed_record_partition_0.offset + 1},
-             {topic, 1, last_processed_record_partition_1.offset + 1}
-           ]
+        assert Enum.sort(offsets) == [
+                 {topic, 0, last_processed_record_partition_0.offset + 1},
+                 {topic, 1, last_processed_record_partition_1.offset + 1}
+               ]
+      end,
+      attempts: 20,
+      delay: 500
+    )
   end
 
   test "stream" do
@@ -88,7 +91,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
       |> Enum.sort()
 
     events =
-      KafkaClient.Consumer.Stream.new(servers: servers(), topics: [topic1, topic2])
+      KafkaClient.Consumer.Stream.new(servers: servers(), subscriptions: [topic1, topic2])
       |> Stream.each(fn message ->
         with {:record, record} <- message,
              do: KafkaClient.Consumer.Poller.ack(record)
@@ -110,7 +113,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
 
   test "handler exception" do
     consumer = start_consumer!()
-    [topic] = consumer.topics
+    [topic] = consumer.subscriptions
 
     produce(topic, partition: 0)
     produced2 = produce(topic, partition: 0)

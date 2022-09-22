@@ -1,145 +1,265 @@
 package com.superology.kafka;
 
-import java.io.*;
 import java.util.*;
+import java.util.stream.*;
+
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
 import com.ericsson.otp.erlang.*;
 
 /*
- * Implements the main thread of the consumer port. Messages are received as
- * encoded Erlang/Elixir terms (`term_to_binary`).
+ * Implements the consumer port, which runs the kafka poller loop, and
+ * dispatches the polled records to Elixir.
  *
- * These messages are processed by the poller loop (see {@link ConsumerPoller}).
- * Replying to Elixir is done in the notification thread (see {@link
- * ConsumerNotifier}).
+ * In addition, the consumer accepts acknowledgments (acks) from Elixir, which
+ * are used for backpressure and commits. See {@link ConsumerBackpressure} and
+ * {@link ConsumerCommits} for details.
  *
+ * See {@link PortDriver} for information about port mechanics, such as
+ * communication protocol and thread.
  */
-public class ConsumerPort {
+public class ConsumerPort implements Port, ConsumerRebalanceListener {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
+    PortDriver.run(args, new ConsumerPort());
+  }
 
-    // Reading from the file descriptor 3, which is allocated by Elixir for input
-    try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
-      var poller = startPoller(args, ConsumerNotifier.start());
+  private PortOutput output;
+  private ConsumerCommits commits;
+  private ConsumerBackpressure backpressure;
+  private HashSet<ConsumerPosition> endOffsets;
+  private boolean isAnonymous;
+
+  @Override
+  public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
+    this.output = output;
+
+    var opts = opts(args);
+    isAnonymous = (opts.consumerProps().getProperty("group.id") == null);
+
+    try (var consumer = new Consumer(opts.consumerProps())) {
+      startConsuming(consumer, opts.subscriptions());
+
+      var pollInterval = (int) opts.pollerProps().getOrDefault("poll_interval", 10);
+      var commitInterval = (int) opts.pollerProps().getOrDefault("commmit_interval", 5000);
+      commits = new ConsumerCommits(consumer, commitInterval);
+      backpressure = new ConsumerBackpressure(consumer);
 
       while (true) {
-        var command = nextCommand(input);
-        handleCommand(poller, command);
+        // commands issued by Elixir, such as ack or stop
+        for (var command : worker.drainCommands())
+          handleCommand(consumer, command);
+
+        // Backpressure and commits are collected while handling Elixir
+        // commands. Now we're flushing the final state (pauses and commits).
+        backpressure.flush();
+        if (!isAnonymous)
+          commits.flush(false);
+
+        var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
+
+        for (var record : records) {
+          // Each record is sent separately to Elixir, instead of sending them
+          // all at once. This improves the throughput, since Elixir can start
+          // processing each record as soon as it arrives, instead of waiting
+          // for all the records to be received.
+          output.emit(recordToOtp(record));
+          backpressure.recordPolled(record);
+        }
       }
-    } catch (Exception e) {
-      System.err.println(e.getMessage());
-      e.printStackTrace();
-      System.exit(1);
     }
   }
 
-  private static ConsumerPoller startPoller(String[] args, ConsumerNotifier notifier)
-      throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
-    var consumerProps = decodeProperties(args[0]);
-    var topics = decodeTopics(args[1]);
-    var pollerProps = decodeProperties(args[2]);
-    var poller = ConsumerPoller.start(consumerProps, topics, pollerProps, notifier);
-    return poller;
+  private Opts opts(Object[] args) {
+    @SuppressWarnings("unchecked")
+    var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
+
+    var subscriptions = new ArrayList<TopicPartition>();
+
+    for (@SuppressWarnings("unchecked")
+    var subscription : (Iterable<Object[]>) args[1])
+      subscriptions.add(new TopicPartition((String) subscription[0], (int) subscription[1]));
+
+    @SuppressWarnings("unchecked")
+    var pollerProps = (Map<String, Object>) args[2];
+
+    return new Opts(consumerProps, subscriptions, pollerProps);
   }
 
-  private static void handleCommand(ConsumerPoller poller, OtpErlangTuple command)
-      throws OtpErlangRangeException, Exception {
-    var tag = command.elementAt(0).toString();
-
-    switch (tag) {
+  private void handleCommand(Consumer consumer, Port.Command command) throws Exception {
+    switch (command.name()) {
       case "ack":
-        poller.addCommand(decodeAck(command));
+        var topic = (String) command.args()[0];
+        var partitionNo = (int) command.args()[1];
+        var partition = new TopicPartition(topic, partitionNo);
+
+        long offset;
+        if (command.args()[2] instanceof Long)
+          offset = (long) command.args()[2];
+        else
+          offset = (int) command.args()[2];
+
+        var ack = new ConsumerPosition(partition, offset);
+
+        backpressure.recordProcessed(ack.partition());
+        if (isAnonymous) {
+          if (endOffsets != null) {
+            endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
+            maybeEmitCaughtUp();
+          }
+        } else
+          commits.add(ack.partition(), ack.offset());
         break;
 
       case "stop":
-        poller.addCommand("stop");
+        if (!isAnonymous)
+          commits.flush(true);
+
+        consumer.close();
+        System.exit(0);
         break;
 
       case "committed_offsets":
-        poller.addCommand("committed_offsets");
+        output.emitCallResponse(
+            command,
+            committedOffsetsToOtp(consumer.committed(consumer.assignment())));
         break;
 
       default:
-        throw new Exception("unknown command " + tag);
+        throw new Exception("unknown command " + command.name());
     }
   }
 
-  private static OtpErlangTuple nextCommand(DataInputStream input)
-      throws IOException, OtpErlangDecodeException {
-    var length = readInt(input);
-    var bytes = readBytes(input, length);
-    return (OtpErlangTuple) otpDecode(bytes);
-  }
-
-  private static int readInt(DataInputStream input)
-      throws IOException {
-    var bytes = readBytes(input, 4);
-    return new java.math.BigInteger(bytes).intValue();
-  }
-
-  private static byte[] readBytes(DataInputStream input, int length)
-      throws IOException {
-    var bytes = new byte[length];
-    input.readFully(bytes);
-    return bytes;
-  }
-
-  private static Properties decodeProperties(String encoded)
-      throws Exception, IOException, OtpErlangDecodeException, OtpErlangRangeException {
-    var consumerProps = new Properties();
-    var paramBytes = java.util.Base64.getDecoder().decode(encoded);
-    var params = (OtpErlangMap) otpDecode(paramBytes);
-
-    for (var param : params.entrySet()) {
-      var key = new String(((OtpErlangBinary) param.getKey()).binaryValue());
-      var value = otpObjectToJava(param.getValue());
-
-      if (value != null)
-        consumerProps.put(key, value);
-    }
-
-    return consumerProps;
-  }
-
-  private static Object otpObjectToJava(OtpErlangObject value) throws OtpErlangRangeException, Exception {
-    if (value instanceof OtpErlangBinary)
-      return new String(((OtpErlangBinary) value).binaryValue());
-    else if (value instanceof OtpErlangLong)
-      return ((OtpErlangLong) value).intValue();
-    else if (value instanceof OtpErlangAtom) {
-      var atomValue = ((OtpErlangAtom) value).atomValue();
-      switch (atomValue) {
-        case "true":
-        case "false":
-          return Boolean.parseBoolean(atomValue);
-
-        case "nil":
-          return null;
+  private void startConsuming(Consumer consumer, Collection<TopicPartition> subscriptions) throws InterruptedException {
+    if (isAnonymous) {
+      // When not in a consumer group we need to manually self-assign the desired
+      // partitions
+      var assignments = new ArrayList<TopicPartition>();
+      for (var subscription : subscriptions) {
+        if (subscription.partition() >= 0)
+          // client is interested in a particular topic-partition
+          assignments.add(subscription);
+        else
+          // client wants to consume the entire topic
+          for (var partitionInfo : consumer.partitionsFor(subscription.topic()))
+            assignments.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
       }
+      consumer.assign(assignments);
+
+      // We'll also fire the assigned notification manually, since the
+      // onPartitionsAssigned callback is not invoked on manual assignment. This
+      // keeps the behaviour consistent and supports synchronism on the
+      // processor side.
+      onPartitionsAssigned(assignments);
+
+      // We'll also store the end offsets of all assigned partitions. This
+      // allows us to fire the "caught_up" notification, issued after all the
+      // records, existing at the time of the assignment, are processed.
+      this.endOffsets = new HashSet<>();
+      for (var entry : consumer.endOffsets(assignments).entrySet()) {
+        if (entry.getValue() > 0)
+          this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
+      }
+
+      maybeEmitCaughtUp();
+    } else {
+      // in a consumer group -> subscribe to the desired topics
+      var topics = StreamSupport.stream(subscriptions.spliterator(), false)
+          .map(subscription -> subscription.topic()).distinct()
+          .toList();
+      consumer.subscribe(topics, this);
     }
-
-    throw new Exception("error converting to java object " + value);
   }
 
-  private static Collection<String> decodeTopics(String encoded) throws IOException, OtpErlangDecodeException {
-    var topics = new ArrayList<String>();
-    var topicBytes = java.util.Base64.getDecoder().decode(encoded);
-    for (var topic : (OtpErlangList) otpDecode(topicBytes))
-      topics.add(new String(((OtpErlangBinary) topic).binaryValue()));
-    return topics;
-  }
-
-  private static ConsumerPosition decodeAck(OtpErlangTuple ack) throws OtpErlangRangeException {
-    var topic = new String(((OtpErlangBinary) ack.elementAt(1)).binaryValue());
-    var partitionNo = ((OtpErlangLong) ack.elementAt(2)).intValue();
-    var partition = new TopicPartition(topic, partitionNo);
-    var offset = ((OtpErlangLong) ack.elementAt(3)).longValue();
-    return new ConsumerPosition(partition, offset);
-  }
-
-  private static OtpErlangObject otpDecode(byte[] encoded) throws IOException, OtpErlangDecodeException {
-    try (var inputStream = new OtpInputStream(encoded)) {
-      return inputStream.read_any();
+  private void maybeEmitCaughtUp() throws InterruptedException {
+    if (endOffsets.isEmpty()) {
+      output.emit(new OtpErlangAtom("caught_up"));
+      endOffsets = null;
     }
   }
+
+  @Override
+  public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+    emitRebalanceEvent("assigned", partitions);
+  }
+
+  @Override
+  public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+    commits.partitionsRevoked(partitions);
+    backpressure.removePartitions(partitions);
+    emitRebalanceEvent("unassigned", partitions);
+  }
+
+  @Override
+  public void onPartitionsLost(Collection<TopicPartition> partitions) {
+    commits.partitionsLost(partitions);
+    backpressure.removePartitions(partitions);
+    emitRebalanceEvent("unassigned", partitions);
+  }
+
+  private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
+    try {
+      output.emit(new OtpErlangTuple(new OtpErlangObject[] {
+          new OtpErlangAtom(event),
+          Erlang.toList(
+              partitions,
+              partition -> new OtpErlangTuple(new OtpErlangObject[] {
+                  new OtpErlangBinary(partition.topic().getBytes()),
+                  new OtpErlangInt(partition.partition())
+              }))
+      }));
+    } catch (InterruptedException e) {
+      throw new org.apache.kafka.common.errors.InterruptException(e);
+    }
+  }
+
+  static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
+    var headers = Erlang.toList(
+        record.headers(),
+        header -> new OtpErlangTuple(new OtpErlangObject[] {
+            new OtpErlangBinary(header.key().getBytes()),
+            new OtpErlangBinary(header.value())
+        }));
+
+    return new OtpErlangTuple(new OtpErlangObject[] {
+        new OtpErlangAtom("record"),
+        new OtpErlangBinary(record.topic().getBytes()),
+        new OtpErlangInt(record.partition()),
+        new OtpErlangLong(record.offset()),
+        new OtpErlangLong(record.timestamp()),
+        headers,
+        new OtpErlangBinary(record.key().getBytes()),
+        new OtpErlangBinary(record.value()),
+    });
+  }
+
+  static private OtpErlangObject committedOffsetsToOtp(Map<TopicPartition, OffsetAndMetadata> map) {
+    return Erlang.toList(
+        map.entrySet().stream().filter(entry -> entry.getValue() != null).toList(),
+        entry -> new OtpErlangTuple(new OtpErlangObject[] {
+            new OtpErlangBinary(entry.getKey().topic().getBytes()),
+            new OtpErlangInt(entry.getKey().partition()),
+            new OtpErlangLong(entry.getValue().offset())
+        }));
+  }
+
+  private Properties mapToProperties(Map<Object, Object> map) {
+    // need to remove nulls, because Properties doesn't support them
+    map.values().removeAll(Collections.singleton(null));
+    var result = new Properties();
+    result.putAll(map);
+    return result;
+  }
+
+  record Opts(Properties consumerProps, Collection<TopicPartition> subscriptions, Map<String, Object> pollerProps) {
+  }
+}
+
+final class Consumer extends KafkaConsumer<String, byte[]> {
+  public Consumer(Properties properties) {
+    super(properties);
+  }
+}
+
+record ConsumerPosition(TopicPartition partition, long offset) {
 }

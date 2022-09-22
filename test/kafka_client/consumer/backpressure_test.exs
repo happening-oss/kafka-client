@@ -4,7 +4,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
 
   test "buffer length based pause" do
     consumer = start_consumer!(num_topics: 2)
-    [topic1, topic2] = consumer.topics
+    [topic1, topic2] = consumer.subscriptions
 
     %{offset: last_buffered_offset} =
       Stream.repeatedly(fn -> produce(topic1, partition: 0) end)
@@ -34,7 +34,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
 
   test "messages size based pause" do
     consumer = start_consumer!(num_topics: 2)
-    [topic1, topic2] = consumer.topics
+    [topic1, topic2] = consumer.subscriptions
 
     value = <<0::200_000-unit(8)>>
 
@@ -66,7 +66,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
 
   test "topic-partition is not paused if the buffer is empty" do
     consumer = start_consumer!()
-    [topic] = consumer.topics
+    [topic] = consumer.subscriptions
 
     value = <<0::1_000_000-unit(8)>>
 

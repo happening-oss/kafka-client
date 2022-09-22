@@ -1,32 +1,34 @@
-if Mix.env() in [:dev, :test] do
-  defmodule KafkaClient.Admin do
-    @moduledoc false
+defmodule KafkaClient.Admin do
+  @moduledoc """
+  Kafka admin services.
 
-    def recreate_topic(brokers, topic, opts \\ []) do
-      if topic in topics(brokers),
-        do: :ok = :brod.delete_topics(brokers, [topic], :timer.seconds(5))
+  This module wraps the functions from the [Java Admin interface]
+  (https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/admin/Admin.html).
+  """
 
-      default_opts = %{num_partitions: 1, replication_factor: 1, assignments: [], configs: []}
-      create_topic_info = default_opts |> Map.merge(Map.new(opts)) |> Map.put(:name, topic)
+  use KafkaClient.GenPort
+  alias KafkaClient.GenPort
 
-      recreate_topic_with_retry(brokers, create_topic_info)
-    end
-
-    defp recreate_topic_with_retry(brokers, create_topic_info, retries \\ 500) do
-      case :brod.create_topics(brokers, [create_topic_info], %{timeout: :timer.seconds(5)}) do
-        :ok ->
-          :ok
-
-        {:error, :topic_already_exists} ->
-          if retries == 0, do: raise("timeout recreating topics")
-          Process.sleep(10)
-          recreate_topic_with_retry(brokers, create_topic_info, retries - 1)
-      end
-    end
-
-    defp topics(brokers) do
-      {:ok, meta} = :brod.get_metadata(brokers)
-      Enum.map(meta.topics, & &1.name)
-    end
+  @spec start_link(servers: String.t(), name: GenServer.name()) :: {:ok, pid}
+  def start_link(opts) do
+    GenPort.start_link(
+      __MODULE__,
+      nil,
+      "AdminPort",
+      [%{"bootstrap.servers" => opts |> Keyword.fetch!(:servers) |> Enum.join(",")}],
+      Keyword.take(opts, ~w/name/a)
+    )
   end
+
+  @doc "Synchronously stops the admin process."
+  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  defdelegate stop(server, timeout \\ :infinity), to: GenPort
+
+  @doc "Returns the list of partitions for the given topics."
+  @spec describe_topics(GenServer.server(), [KafkaClient.topic()]) ::
+          %{KafkaClient.topic() => [KafkaClient.partition()]}
+  def describe_topics(server, topics), do: GenPort.call(server, :describe_topics, [topics])
+
+  @impl GenServer
+  def init(_), do: {:ok, nil}
 end

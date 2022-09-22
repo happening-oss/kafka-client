@@ -10,20 +10,24 @@ defmodule KafkaClient.Test.Helper do
   def start_consumer!(opts \\ []) do
     group_id = Keyword.get(opts, :group_id, unique("test_group"))
 
-    topics = consumer_topics(opts)
+    subscriptions = subscriptions(opts)
 
     test_pid = self()
     child_id = make_ref()
 
+    opts =
+      [
+        servers: servers(),
+        group_id: group_id,
+        subscriptions: subscriptions,
+        handler: &handle_consumer_event(&1, test_pid),
+        commit_interval: 50,
+        consumer_params: Keyword.get(opts, :consumer_params, %{})
+      ] ++ Keyword.take(opts, ~w/name/a)
+
     consumer_pid =
       ExUnit.Callbacks.start_supervised!(
-        {KafkaClient.Consumer,
-         servers: servers(),
-         group_id: group_id,
-         topics: topics,
-         handler: &handle_consumer_event(&1, test_pid),
-         commit_interval: 50,
-         consumer_params: Keyword.get(opts, :consumer_params, %{})},
+        {KafkaClient.Consumer, opts},
         id: child_id,
         restart: :temporary
       )
@@ -41,16 +45,17 @@ defmodule KafkaClient.Test.Helper do
 
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    assert_receive({:assigned, _partitions}, :timer.seconds(10))
+    unless Keyword.get(opts, :await_assigned?, true),
+      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
-    %{pid: consumer_pid, child_id: child_id, topics: topics}
+    %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions}
   end
 
-  defp consumer_topics(opts) do
-    topics =
+  defp subscriptions(opts) do
+    subscriptions =
       Keyword.get_lazy(
         opts,
-        :topics,
+        :subscriptions,
         fn ->
           Enum.map(
             1..Keyword.get(opts, :num_topics, 1)//1,
@@ -59,17 +64,25 @@ defmodule KafkaClient.Test.Helper do
         end
       )
 
-    if Keyword.get(opts, :recreate_topics?, true), do: recreate_topics(topics)
+    if Keyword.get(opts, :recreate_topics?, true) do
+      subscriptions
+      |> Enum.map(&with {topic, _partition} <- &1, do: topic)
+      |> recreate_topics()
+    end
 
-    topics
+    subscriptions
   end
 
   def new_test_topic, do: unique("kafka_client_test_topic")
 
   def recreate_topics(topics) do
     topics
+    |> Enum.map(&with string when is_binary(string) <- &1, do: {string, []})
     |> Task.async_stream(
-      &KafkaClient.Admin.recreate_topic(brokers(), &1, num_partitions: 2),
+      fn {topic, opts} ->
+        opts = Keyword.merge([num_partitions: 2], opts)
+        KafkaClient.TestAdmin.recreate_topic(brokers(), topic, opts)
+      end,
       timeout: :timer.seconds(10)
     )
     |> Stream.run()
@@ -161,9 +174,14 @@ defmodule KafkaClient.Test.Helper do
     record
   end
 
+  def poller(consumer) do
+    {:ok, poller} = Parent.Client.child_pid(consumer.pid, :poller)
+    poller
+  end
+
   def port(consumer) do
-    {:ok, poller_pid} = Parent.Client.child_pid(consumer.pid, :poller)
-    :sys.get_state(poller_pid).port
+    {:dictionary, dictionary} = Process.info(poller(consumer), :dictionary)
+    dictionary |> Map.new() |> Map.fetch!({KafkaClient.GenPort, :port})
   end
 
   def os_pid(port) do
@@ -173,4 +191,16 @@ defmodule KafkaClient.Test.Helper do
 
   def servers, do: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end)
   defp brokers, do: [{"localhost", 9092}]
+
+  def eventually(fun, opts \\ []),
+    do: eventually(fun, Keyword.get(opts, :attempts, 10), Keyword.get(opts, :delay, 100))
+
+  defp eventually(fun, attempts, delay) do
+    fun.()
+  rescue
+    e in [ExUnit.AssertionError] ->
+      if attempts == 1, do: reraise(e, __STACKTRACE__)
+      Process.sleep(delay)
+      eventually(fun, attempts - 1, delay)
+  end
 end

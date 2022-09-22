@@ -35,7 +35,7 @@ transfers = :ets.new(:transfers, [:public, write_concurrency: true])
 )
 
 IO.puts("recreating topic #{topic}")
-KafkaClient.Admin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
+KafkaClient.TestAdmin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
 
 IO.puts("producing messages")
 :ok = :brod.start_client(brokers, :test_client, auto_start_producers: true)
@@ -58,7 +58,7 @@ IO.puts("producing messages")
   KafkaClient.Consumer.start_link(
     servers: Enum.map(brokers, fn {host, port} -> "#{host}:#{port}" end),
     group_id: "test_group",
-    topics: [topic],
+    subscriptions: [topic],
     handler: fn
       {:assigned, _partitions} -> send(bench_pid, :consuming)
       {:record, _record} -> :ok
@@ -119,4 +119,4 @@ java -> elixir transfer time: #{transfer_times}
 
 """)
 
-GenServer.stop(consumer_pid)
+KafkaClient.Consumer.stop(consumer_pid)

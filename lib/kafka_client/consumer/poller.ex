@@ -9,7 +9,7 @@ defmodule KafkaClient.Consumer.Poller do
   `GenStage`, for example.
 
   This module is a lightweight wrapper around the Java port program, where most of the polling
-  logic resides. Take a look at `ConsumerPoller` in Java for details. In a nutshell, this is a
+  logic resides. Take a look at `ConsumerPort` in Java for details. In a nutshell, this is a
   `GenServer` process which starts the port, and forwards the notifications emitted by the Java
   program to the client process, called _processor_. Implementing the processor is the
   responsibility of the client.
@@ -22,8 +22,8 @@ defmodule KafkaClient.Consumer.Poller do
   ## Anonymous consumer vs consumer group
 
   If the `:group_id` option is not provided, or if it is set to `nil`, the poller will manually
-  assign itself to all partitions of the desired topics, and poll messages from the beginning. The
-  polled messages are not committed to Kafka.
+  assign itself to the desired subscriptions. Anonymous consumer will not commit the acknowledged
+  messages to kafka.
 
   If the `:group_id` options is provided and not `nil`, the poller will subscribe to the desired
   topics. The partitions will be automatically assigned to the poller, as a part of the rebalance.
@@ -82,24 +82,26 @@ defmodule KafkaClient.Consumer.Poller do
   supervisor.
   """
 
-  use GenServer
+  use KafkaClient.GenPort
   require Logger
-  alias KafkaClient.Consumer.Port
+  alias KafkaClient.GenPort
 
   @type option ::
           {:processor, pid}
           | {:servers, [String.t()]}
           | {:group_id, String.t() | nil}
-          | {:topics, [String.t()]}
+          | {:subscriptions, [subscription]}
           | {:poll_duration, pos_integer}
           | {:commit_interval, pos_integer}
           | {:consumer_params, %{String.t() => any}}
 
+  @type subscription :: KafkaClient.topic() | {KafkaClient.topic(), KafkaClient.partition()}
+
   @type record :: %{
           optional(atom) => any,
-          topic: topic,
-          partition: partition,
-          offset: non_neg_integer(),
+          topic: KafkaClient.topic(),
+          partition: KafkaClient.partition(),
+          offset: KafkaClient.offset(),
           timestamp: pos_integer(),
           headers: [{String.t(), binary}],
           key: String.t(),
@@ -119,13 +121,10 @@ defmodule KafkaClient.Consumer.Poller do
       - `{:record, record}` - a record is polled
   """
   @type notification ::
-          {:assigned, [{topic, partition}]}
-          | {:unassigned, [{topic, partition}]}
+          {:assigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
+          | {:unassigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
           | :caught_up
           | {:record, record}
-
-  @type topic :: String.t()
-  @type partition :: non_neg_integer
 
   @doc """
   Starts the poller process.
@@ -135,18 +134,57 @@ defmodule KafkaClient.Consumer.Poller do
     - `:processor` - the pid of the process which will receive the consumer notifications.
     - `:servers` - the list of the broker hosts, e.g. `["localhost:9092"]`.
     - `:group_id` - the name of the consumer group. Defaults to `nil` (anonymous consumer).
-    - `:topics` - the list of topics to consume from (e.g. `["topic1", "topic2", ...]`).
+    - `:subscriptions` - the list of subscriptions to consume from (e.g. `["topic1", "topic2", ...]`).
+        A subscription can be a topic (string), or a topic-partition (`{topic, partition}`). If the
+        consumer is anonymous, and only the topic name is provided, the consumer will self-assign
+        to all partitions on the given topic. If the consumer is in a consumer group, the
+        `partition` element is ignored, and the consumer subscribes to the given topic.
     - `:poll_duration` - the duration of a single poll in milliseconds. Defaults to 10.
     - `:commit_interval` - the commit frequency in milliseconds. Defaults to 5000.
     - `:consumer_params` - a `String.t => any` map passed directly to the Java Kafka client.
       See https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html for details.
   """
-  @spec start_link([option | {:processor, pid}]) :: GenServer.on_start()
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+  @spec start_link([option | {:processor, pid} | {:name, GenServer.name()}]) ::
+          GenServer.on_start()
+  def start_link(opts) do
+    servers = Keyword.fetch!(opts, :servers)
+    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&normalize_subscription/1)
+    group_id = Keyword.get(opts, :group_id)
+    user_consumer_params = Keyword.get(opts, :consumer_params, %{})
+
+    poller_properties = %{
+      "poll_duration" => Keyword.get(opts, :poll_duration, 10),
+      "commit_interval" => Keyword.get(opts, :commit_interval, :timer.seconds(5))
+    }
+
+    consumer_params =
+      %{
+        "heartbeat.interval.ms" => 100,
+        "max.poll.interval.ms" => 1000,
+        "auto.offset.reset" => "earliest"
+      }
+      |> Map.merge(user_consumer_params)
+      # non-overridable params
+      |> Map.merge(%{
+        "bootstrap.servers" => Enum.join(servers, ","),
+        "group.id" => group_id,
+        "enable.auto.commit" => false,
+        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
+        "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer"
+      })
+
+    GenPort.start_link(
+      __MODULE__,
+      Keyword.fetch!(opts, :processor),
+      "ConsumerPort",
+      [consumer_params, subscriptions, poller_properties],
+      Keyword.take(opts, ~w/name/a)
+    )
+  end
 
   @doc "Synchronously stops the poller process."
-  @spec stop(GenServer.server()) :: :ok
-  def stop(pid), do: GenServer.stop(pid)
+  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
   @doc """
   Informs the poller that the record processing has been started.
@@ -187,43 +225,32 @@ defmodule KafkaClient.Consumer.Poller do
   """
   @spec ack(record) :: :ok
   def ack(record),
-    do: Port.ack(record.port, record.topic, record.partition, record.offset)
+    do: GenPort.command(record.port, :ack, [record.topic, record.partition, record.offset])
 
   @doc "Returns the record fields used as a meta in telemetry events."
   @spec telemetry_meta(record) :: %{atom => any}
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
 
+  @doc "Returns committed offsets for the currently assigned partitions of this consumer."
+  @spec committed_offsets(GenServer.server()) ::
+          [{KafkaClient.topic(), KafkaClient.partition(), KafkaClient.offset()}]
+  def committed_offsets(server), do: GenPort.call(server, :committed_offsets)
+
   @impl GenServer
-  def init(opts) do
-    Process.flag(:trap_exit, true)
-    processor = Keyword.fetch!(opts, :processor)
-    port = Port.open(opts)
+  def init(processor) do
     Process.monitor(processor)
-    {:ok, %{port: port, processor: processor}}
+    {:ok, %{processor: processor}}
   end
 
   @impl GenServer
-  def handle_info({port, {:data, data}}, %{port: port} = state) do
-    data |> :erlang.binary_to_term() |> handle_port_message(state)
-    {:noreply, state}
-  end
-
-  def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.error("port exited with status #{status}")
-    {:stop, :port_crash, %{state | port: nil}}
-  end
-
   def handle_info({:DOWN, _mref, :process, processor, reason}, %{processor: processor} = state),
     do: {:stop, reason, %{state | processor: nil}}
 
-  @impl GenServer
-  def terminate(_reason, state),
-    do: if(state.port != nil, do: Port.close(state.port))
-
-  defp handle_port_message(
-         {:record, topic, partition, offset, timestamp, headers, key, value},
-         state
-       ) do
+  @impl GenPort
+  def handle_port_message(
+        {:record, topic, partition, offset, timestamp, headers, key, value},
+        state
+      ) do
     record = %{
       topic: topic,
       partition: partition,
@@ -232,7 +259,7 @@ defmodule KafkaClient.Consumer.Poller do
       headers: headers,
       key: key,
       value: value,
-      port: state.port,
+      port: GenPort.port(),
       received_at: System.monotonic_time()
     }
 
@@ -243,24 +270,17 @@ defmodule KafkaClient.Consumer.Poller do
     )
 
     notify_processor(state, {:record, record})
+
+    {:noreply, state}
   end
 
-  defp handle_port_message({:metrics, transfer_time, duration}, _state) do
-    transfer_time = System.convert_time_unit(transfer_time, :nanosecond, :native)
-    duration = System.convert_time_unit(duration, :nanosecond, :native)
-
-    :telemetry.execute(
-      [:kafka_client, :consumer, :port, :stop],
-      %{
-        system_time: System.system_time(),
-        transfer_time: transfer_time,
-        duration: duration
-      },
-      %{}
-    )
+  def handle_port_message(message, state) do
+    notify_processor(state, message)
+    {:noreply, state}
   end
-
-  defp handle_port_message(message, state), do: notify_processor(state, message)
 
   defp notify_processor(state, message), do: send(state.processor, {self(), message})
+
+  defp normalize_subscription(topic) when is_binary(topic), do: {topic, -1}
+  defp normalize_subscription({_topic, _partition} = subscription), do: subscription
 end
