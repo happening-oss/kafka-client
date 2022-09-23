@@ -72,45 +72,6 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     )
   end
 
-  test "stream" do
-    topic1 = new_test_topic()
-    topic2 = new_test_topic()
-
-    recreate_topics([topic1, topic2])
-
-    produced =
-      [
-        produce(topic1, partition: 0),
-        produce(topic1, partition: 1),
-        produce(topic1, partition: 1),
-        produce(topic2, partition: 0),
-        produce(topic2, partition: 0),
-        produce(topic2, partition: 0)
-      ]
-      |> Enum.map(&Map.take(&1, ~w/topic partition offset value/a))
-      |> Enum.sort()
-
-    events =
-      KafkaClient.Consumer.Stream.new(servers: servers(), subscriptions: [topic1, topic2])
-      |> Stream.each(fn message ->
-        with {:record, record} <- message,
-             do: KafkaClient.Consumer.Poller.ack(record)
-      end)
-      |> Enum.take_while(&(&1 != :caught_up))
-
-    # expected events are: assigned, produced records, and caught_up (which is already removed with
-    # Enum.take_while)
-    assert length(events) == length(produced) + 1
-
-    assert {:assigned, _partitions} = hd(events)
-
-    consumed =
-      for({:record, record} <- events, do: Map.take(record, ~w/topic partition offset value/a))
-      |> Enum.sort()
-
-    assert consumed == produced
-  end
-
   test "handler exception" do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions

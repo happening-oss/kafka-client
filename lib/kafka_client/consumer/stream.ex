@@ -57,23 +57,41 @@ defmodule KafkaClient.Consumer.Stream do
   @spec new([Poller.option()]) :: Enumerable.t()
   def new(opts) do
     Stream.resource(
-      fn ->
-        opts = Keyword.put(opts, :processor, self())
-        {:ok, poller} = Poller.start_link(opts)
-        Process.monitor(poller)
-        poller
-      end,
-      fn poller ->
-        receive do
-          {^poller, notification} ->
-            with {:record, record} <- notification, do: Poller.started_processing(record)
-            {[notification], poller}
-
-          {:DOWN, _mref, :process, ^poller, reason} ->
-            exit(reason)
-        end
-      end,
-      &Poller.stop/1
+      fn -> start_poller(opts) end,
+      &next_notification/1,
+      &stop_poller/1
     )
+  end
+
+  defp start_poller(opts) do
+    opts = Keyword.put(opts, :processor, self())
+    {:ok, poller} = Poller.start_link(opts)
+    mref = Process.monitor(poller)
+    {poller, mref}
+  end
+
+  defp next_notification({poller, mref}) do
+    receive do
+      {^poller, notification} ->
+        with {:record, record} <- notification, do: Poller.started_processing(record)
+        {[notification], {poller, mref}}
+
+      {:DOWN, _mref, :process, ^poller, reason} ->
+        exit(reason)
+    end
+  end
+
+  defp stop_poller({poller, mref}) do
+    Process.demonitor(mref, [:flush])
+    Poller.stop(poller)
+    flush_messages(poller)
+  end
+
+  defp flush_messages(poller) do
+    receive do
+      {^poller, _notification} -> flush_messages(poller)
+    after
+      0 -> :ok
+    end
   end
 end
