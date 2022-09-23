@@ -63,7 +63,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
           // all at once. This improves the throughput, since Elixir can start
           // processing each record as soon as it arrives, instead of waiting
           // for all the records to be received.
-          output.emit(recordToOtp(record));
+          output.emit(recordToOtp(record), true);
           backpressure.recordPolled(record);
         }
       }

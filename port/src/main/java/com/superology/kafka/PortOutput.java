@@ -37,7 +37,15 @@ final class PortOutput implements Runnable {
   }
 
   public void emit(OtpErlangObject message) throws InterruptedException {
-    messages.put(new Message(message, System.nanoTime()));
+    emit(message, false);
+  }
+
+  public void emit(OtpErlangObject message, boolean emitMetrics) throws InterruptedException {
+    Long now = null;
+    if (emitMetrics)
+      now = System.nanoTime();
+
+    messages.put(new Message(message, now));
   }
 
   @Override
@@ -52,15 +60,17 @@ final class PortOutput implements Runnable {
         notify(output, message.payload());
         var sentAt = System.nanoTime();
 
-        // then we send the measurement to the output
-        var duration = sentAt - message.startTime();
-        notify(
-            output,
-            new OtpErlangTuple(new OtpErlangObject[] {
-                new OtpErlangAtom("metrics"),
-                new OtpErlangLong(sentAt - sendingAt),
-                new OtpErlangLong(duration)
-            }));
+        if (message.startTime() != null) {
+          // send the measurement to the output
+          var duration = sentAt - message.startTime();
+          notify(
+              output,
+              new OtpErlangTuple(new OtpErlangObject[] {
+                  new OtpErlangAtom("metrics"),
+                  new OtpErlangLong(sentAt - sendingAt),
+                  new OtpErlangLong(duration)
+              }));
+        }
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());
@@ -82,6 +92,6 @@ final class PortOutput implements Runnable {
     output.write(payload);
   }
 
-  record Message(OtpErlangObject payload, long startTime) {
+  record Message(OtpErlangObject payload, Long startTime) {
   }
 }
