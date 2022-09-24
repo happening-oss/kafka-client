@@ -74,11 +74,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     @SuppressWarnings("unchecked")
     var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
 
-    var subscriptions = new ArrayList<TopicPartition>();
+    var subscriptions = new ArrayList<ConsumerPosition>();
 
     for (@SuppressWarnings("unchecked")
     var subscription : (Iterable<Object[]>) args[1])
-      subscriptions.add(new TopicPartition((String) subscription[0], (int) subscription[1]));
+      subscriptions.add(consumerPosition(subscription));
 
     @SuppressWarnings("unchecked")
     var pollerProps = (Map<String, Object>) args[2];
@@ -89,17 +89,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   private void handleCommand(Consumer consumer, Port.Command command) throws Exception {
     switch (command.name()) {
       case "ack":
-        var topic = (String) command.args()[0];
-        var partitionNo = (int) command.args()[1];
-        var partition = new TopicPartition(topic, partitionNo);
-
-        long offset;
-        if (command.args()[2] instanceof Long)
-          offset = (long) command.args()[2];
-        else
-          offset = (int) command.args()[2];
-
-        var ack = new ConsumerPosition(partition, offset);
+        var ack = consumerPosition(command.args());
 
         backpressure.recordProcessed(ack.partition());
         if (isAnonymous) {
@@ -130,21 +120,43 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     }
   }
 
-  private void startConsuming(Consumer consumer, Collection<TopicPartition> subscriptions) throws InterruptedException {
+  private static ConsumerPosition consumerPosition(Object[] args) {
+    var topic = (String) args[0];
+    var partitionNo = (int) args[1];
+    var partition = new TopicPartition(topic, partitionNo);
+    var offset = toLong(args[2]);
+
+    return new ConsumerPosition(partition, offset);
+  }
+
+  private static long toLong(Object value) {
+    if (value instanceof Long)
+      return (long) value;
+
+    return (long) ((int) value);
+  }
+
+  private void startConsuming(Consumer consumer, Collection<ConsumerPosition> subscriptions)
+      throws InterruptedException {
     if (isAnonymous) {
       // When not in a consumer group we need to manually self-assign the desired
       // partitions
       var assignments = new ArrayList<TopicPartition>();
       for (var subscription : subscriptions) {
-        if (subscription.partition() >= 0)
+        if (subscription.partition().partition() >= 0)
           // client is interested in a particular topic-partition
-          assignments.add(subscription);
+          assignments.add(subscription.partition());
         else
           // client wants to consume the entire topic
-          for (var partitionInfo : consumer.partitionsFor(subscription.topic()))
+          for (var partitionInfo : consumer.partitionsFor(subscription.partition().topic()))
             assignments.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
       }
       consumer.assign(assignments);
+
+      for (var subscription : subscriptions) {
+        if (subscription.offset() >= 0)
+          consumer.seek(subscription.partition(), subscription.offset());
+      }
 
       // We'll also fire the assigned notification manually, since the
       // onPartitionsAssigned callback is not invoked on manual assignment. This
@@ -165,7 +177,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     } else {
       // in a consumer group -> subscribe to the desired topics
       var topics = StreamSupport.stream(subscriptions.spliterator(), false)
-          .map(subscription -> subscription.topic()).distinct()
+          .map(subscription -> subscription.partition().topic()).distinct()
           .toList();
       consumer.subscribe(topics, this);
     }
@@ -251,7 +263,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     return result;
   }
 
-  record Opts(Properties consumerProps, Collection<TopicPartition> subscriptions, Map<String, Object> pollerProps) {
+  record Opts(Properties consumerProps, Collection<ConsumerPosition> subscriptions, Map<String, Object> pollerProps) {
   }
 }
 

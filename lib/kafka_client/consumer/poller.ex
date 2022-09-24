@@ -95,7 +95,10 @@ defmodule KafkaClient.Consumer.Poller do
           | {:commit_interval, pos_integer}
           | {:consumer_params, %{String.t() => any}}
 
-  @type subscription :: KafkaClient.topic() | {KafkaClient.topic(), KafkaClient.partition()}
+  @type subscription ::
+          KafkaClient.topic()
+          | {KafkaClient.topic(), KafkaClient.partition()}
+          | {KafkaClient.topic(), KafkaClient.offset()}
 
   @type record :: %{
           optional(atom) => any,
@@ -148,7 +151,7 @@ defmodule KafkaClient.Consumer.Poller do
           GenServer.on_start()
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
-    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&normalize_subscription/1)
+    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&full_subscription/1)
     group_id = Keyword.get(opts, :group_id)
     user_consumer_params = Keyword.get(opts, :consumer_params, %{})
 
@@ -281,6 +284,7 @@ defmodule KafkaClient.Consumer.Poller do
 
   defp notify_processor(state, message), do: send(state.processor, {self(), message})
 
-  defp normalize_subscription(topic) when is_binary(topic), do: {topic, -1}
-  defp normalize_subscription({_topic, _partition} = subscription), do: subscription
+  defp full_subscription(topic) when is_binary(topic), do: full_subscription({topic, -1})
+  defp full_subscription({topic, partition}), do: full_subscription({topic, partition, -1})
+  defp full_subscription({_, _, _} = subscription), do: subscription
 end
