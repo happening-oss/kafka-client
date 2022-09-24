@@ -76,16 +76,20 @@ defmodule KafkaClient.Test.Helper do
 
     opts = Map.merge(default_opts, Map.new(opts))
 
+    timestamp =
+      DateTime.to_unix(~U[2022-01-01 00:00:00.00Z], :nanosecond) +
+        System.unique_integer([:positive, :monotonic])
+
     {:ok, offset} =
       :brod.produce_sync_offset(
         :test_client,
         topic,
         opts.partition,
         opts.key,
-        Map.take(opts, ~w/headers value/a)
+        opts |> Map.take(~w/headers value/a) |> Map.put(:ts, timestamp)
       )
 
-    Map.merge(opts, %{topic: topic, offset: offset})
+    Map.merge(opts, %{topic: topic, offset: offset, timestamp: timestamp})
   end
 
   def resume_processing(record) do

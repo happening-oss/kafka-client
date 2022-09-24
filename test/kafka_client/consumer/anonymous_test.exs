@@ -119,7 +119,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     refute_processing(topic3, 1)
   end
 
-  test "initial position" do
+  test "initial position via offset" do
     topic = new_test_topic()
 
     recreate_topics([topic])
@@ -131,6 +131,25 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     start_consumer!(
       group_id: nil,
       subscriptions: [{topic, 0, record2.offset}],
+      recreate_topics?: false
+    )
+
+    processing = assert_processing(topic, 0)
+    assert processing.offset == record2.offset
+  end
+
+  test "initial position via timestamp" do
+    topic = new_test_topic()
+
+    recreate_topics([topic])
+
+    produce(topic, partition: 0)
+    record2 = produce(topic, partition: 0)
+    produce(topic, partition: 0)
+
+    start_consumer!(
+      group_id: nil,
+      subscriptions: [{topic, 0, {:timestamp, record2.timestamp}}],
       recreate_topics?: false
     )
 
