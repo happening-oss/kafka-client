@@ -95,14 +95,34 @@ defmodule KafkaClient.Consumer.Poller do
           | {:commit_interval, pos_integer}
           | {:consumer_params, %{String.t() => any}}
 
-  @type subscription :: KafkaClient.topic() | {KafkaClient.topic(), KafkaClient.partition()}
+  @typedoc """
+  Represents a consumer subscription.
+
+  A subscription can be a topic name, a `{topic, partition}` pair, or a `{topic, partition, position}` triplet.
+
+  If the consumer is in a consumer group, only the topic name will be used, while other fields are
+  ignored. The consumer will subscribe to the given topic, and the partitions will be auto-assigned
+  via rebalance.
+
+  An anonymous consumer will self-assign to the desired topic-partitions (or all partitions if only
+  the topic name is provided). The consumer will also jump to the given position (if provided).
+  """
+  @type subscription ::
+          KafkaClient.topic()
+          | {KafkaClient.topic(), KafkaClient.partition()}
+          | {KafkaClient.topic(), KafkaClient.partition(), subscription_position}
+
+  @type subscription_position ::
+          KafkaClient.offset()
+          | {:offset, KafkaClient.offset()}
+          | {:timestamp, KafkaClient.timestamp()}
 
   @type record :: %{
           optional(atom) => any,
           topic: KafkaClient.topic(),
           partition: KafkaClient.partition(),
           offset: KafkaClient.offset(),
-          timestamp: pos_integer(),
+          timestamp: KafkaClient.timestamp(),
           headers: [{String.t(), binary}],
           key: String.t(),
           value: binary
@@ -135,10 +155,7 @@ defmodule KafkaClient.Consumer.Poller do
     - `:servers` - the list of the broker hosts, e.g. `["localhost:9092"]`.
     - `:group_id` - the name of the consumer group. Defaults to `nil` (anonymous consumer).
     - `:subscriptions` - the list of subscriptions to consume from (e.g. `["topic1", "topic2", ...]`).
-        A subscription can be a topic (string), or a topic-partition (`{topic, partition}`). If the
-        consumer is anonymous, and only the topic name is provided, the consumer will self-assign
-        to all partitions on the given topic. If the consumer is in a consumer group, the
-        `partition` element is ignored, and the consumer subscribes to the given topic.
+      See `t:subscription/0` for details.
     - `:poll_duration` - the duration of a single poll in milliseconds. Defaults to 10.
     - `:commit_interval` - the commit frequency in milliseconds. Defaults to 5000.
     - `:consumer_params` - a `String.t => any` map passed directly to the Java Kafka client.
@@ -148,7 +165,7 @@ defmodule KafkaClient.Consumer.Poller do
           GenServer.on_start()
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
-    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&normalize_subscription/1)
+    subscriptions = opts |> Keyword.fetch!(:subscriptions) |> Enum.map(&full_subscription/1)
     group_id = Keyword.get(opts, :group_id)
     user_consumer_params = Keyword.get(opts, :consumer_params, %{})
 
@@ -281,6 +298,18 @@ defmodule KafkaClient.Consumer.Poller do
 
   defp notify_processor(state, message), do: send(state.processor, {self(), message})
 
-  defp normalize_subscription(topic) when is_binary(topic), do: {topic, -1}
-  defp normalize_subscription({_topic, _partition} = subscription), do: subscription
+  defp full_subscription(topic) when is_binary(topic), do: full_subscription({topic, -1})
+  defp full_subscription({topic, partition}), do: full_subscription({topic, partition, nil})
+
+  defp full_subscription({topic, partition, position}) do
+    {position_type, position} =
+      case position do
+        nil -> {nil, nil}
+        offset when is_integer(offset) -> {0, offset}
+        {:offset, offset} -> {0, offset}
+        {:timestamp, timestamp} -> {1, timestamp}
+      end
+
+    {topic, partition, position_type, position}
+  end
 end

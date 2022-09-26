@@ -22,7 +22,6 @@ import org.apache.kafka.clients.consumer.*;
 final class ConsumerBackpressure {
   private Consumer consumer;
   private HashSet<TopicPartition> pausedPartitions = new HashSet<TopicPartition>();
-  private HashSet<TopicPartition> resumedPartitions = new HashSet<TopicPartition>();
   private HashMap<TopicPartition, Queue> queues = new HashMap<TopicPartition, Queue>();
 
   public ConsumerBackpressure(Consumer consumer) {
@@ -39,10 +38,8 @@ final class ConsumerBackpressure {
     }
 
     queue.recordPolled(record);
-    if (queue.shouldPause()) {
+    if (queue.shouldPause())
       pausedPartitions.add(partition);
-      resumedPartitions.remove(partition);
-    }
   }
 
   // Invoked by the poller when a record has been fully processed in Elixir.
@@ -51,10 +48,8 @@ final class ConsumerBackpressure {
     if (queue != null) {
       queue.recordProcessed();
 
-      if (queue.shouldResume()) {
+      if (queue.shouldResume())
         pausedPartitions.remove(partition);
-        resumedPartitions.add(partition);
-      }
     }
   }
 
@@ -69,15 +64,18 @@ final class ConsumerBackpressure {
     pausedPartitions.retainAll(consumer.assignment());
     consumer.pause(pausedPartitions);
 
-    resumedPartitions.retainAll(consumer.assignment());
+    // Resumed partitions are all assigned partitions which are not paused. Just
+    // like with pauses, this will end up resuming non-paused partitions, but that's
+    // a non-op, so it's fine.
+    var resumedPartitions = new HashSet<TopicPartition>();
+    resumedPartitions.addAll(consumer.assignment());
+    resumedPartitions.removeAll(pausedPartitions);
     consumer.resume(resumedPartitions);
-    resumedPartitions.clear();
   }
 
   // Invoked by the poller when the partitions are lost due to a rebalance.
   public void removePartitions(Collection<TopicPartition> partitions) {
     pausedPartitions.removeAll(partitions);
-    resumedPartitions.removeAll(partitions);
   }
 
   final class Queue {

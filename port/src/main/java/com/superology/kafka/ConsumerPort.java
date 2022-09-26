@@ -38,7 +38,10 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     isAnonymous = (opts.consumerProps().getProperty("group.id") == null);
 
     try (var consumer = new Consumer(opts.consumerProps())) {
-      startConsuming(consumer, opts.subscriptions());
+      if (isAnonymous)
+        startAnonymousConsuming(consumer, opts.subscriptions);
+      else
+        startConsumerGroupConsuming(consumer, opts.subscriptions);
 
       var pollInterval = (int) opts.pollerProps().getOrDefault("poll_interval", 10);
       var commitInterval = (int) opts.pollerProps().getOrDefault("commmit_interval", 5000);
@@ -63,7 +66,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
           // all at once. This improves the throughput, since Elixir can start
           // processing each record as soon as it arrives, instead of waiting
           // for all the records to be received.
-          output.emit(recordToOtp(record));
+          output.emit(recordToOtp(record), true);
           backpressure.recordPolled(record);
         }
       }
@@ -74,11 +77,22 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     @SuppressWarnings("unchecked")
     var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
 
-    var subscriptions = new ArrayList<TopicPartition>();
+    var subscriptions = new ArrayList<Subscription>();
 
     for (@SuppressWarnings("unchecked")
-    var subscription : (Iterable<Object[]>) args[1])
-      subscriptions.add(new TopicPartition((String) subscription[0], (int) subscription[1]));
+    var subscription : (Iterable<Object[]>) args[1]) {
+      var topic = (String) subscription[0];
+      var partitionNo = (int) subscription[1];
+      var partition = new TopicPartition(topic, partitionNo);
+      Integer type = null;
+      Long position = null;
+
+      if (subscription[2] != null) {
+        type = (int) subscription[2];
+        position = toLong(subscription[3]);
+      }
+      subscriptions.add(new Subscription(partition, type, position));
+    }
 
     @SuppressWarnings("unchecked")
     var pollerProps = (Map<String, Object>) args[2];
@@ -89,17 +103,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   private void handleCommand(Consumer consumer, Port.Command command) throws Exception {
     switch (command.name()) {
       case "ack":
-        var topic = (String) command.args()[0];
-        var partitionNo = (int) command.args()[1];
-        var partition = new TopicPartition(topic, partitionNo);
-
-        long offset;
-        if (command.args()[2] instanceof Long)
-          offset = (long) command.args()[2];
-        else
-          offset = (int) command.args()[2];
-
-        var ack = new ConsumerPosition(partition, offset);
+        var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
 
         backpressure.recordProcessed(ack.partition());
         if (isAnonymous) {
@@ -130,44 +134,89 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     }
   }
 
-  private void startConsuming(Consumer consumer, Collection<TopicPartition> subscriptions) throws InterruptedException {
-    if (isAnonymous) {
-      // When not in a consumer group we need to manually self-assign the desired
-      // partitions
-      var assignments = new ArrayList<TopicPartition>();
-      for (var subscription : subscriptions) {
-        if (subscription.partition() >= 0)
-          // client is interested in a particular topic-partition
-          assignments.add(subscription);
-        else
-          // client wants to consume the entire topic
-          for (var partitionInfo : consumer.partitionsFor(subscription.topic()))
-            assignments.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+  private static TopicPartition toTopicPartition(Object[] args) {
+    var topic = (String) args[0];
+    var partitionNo = (int) args[1];
+    return new TopicPartition(topic, partitionNo);
+  }
+
+  private static long toLong(Object value) {
+    if (value instanceof Long)
+      return (long) value;
+
+    return (long) ((int) value);
+  }
+
+  private void startConsumerGroupConsuming(Consumer consumer, Collection<Subscription> subscriptions) {
+    // in a consumer group -> subscribe to the desired topics
+    var topics = StreamSupport.stream(subscriptions.spliterator(), false)
+        .map(subscription -> subscription.partition().topic()).distinct()
+        .toList();
+    consumer.subscribe(topics, this);
+  }
+
+  private void startAnonymousConsuming(Consumer consumer, Collection<Subscription> subscriptions)
+      throws InterruptedException {
+    // When not in a consumer group we need to manually self-assign the desired
+    // partitions
+    var assignments = assignPartitions(consumer, subscriptions);
+
+    // In this mode the consumer may also ask to start at a particular position
+    seekToPositions(consumer, subscriptions);
+
+    // We'll also fire the assigned notification manually, since the
+    // onPartitionsAssigned callback is not invoked on manual assignment. This
+    // keeps the behaviour consistent and supports synchronism on the
+    // processor side.
+    onPartitionsAssigned(assignments);
+
+    // We'll also store the end offsets of all assigned partitions. This
+    // allows us to fire the "caught_up" notification, issued after all the
+    // records, existing at the time of the assignment, are processed.
+    this.endOffsets = new HashSet<>();
+    for (var entry : consumer.endOffsets(assignments).entrySet()) {
+      if (entry.getValue() > 0)
+        this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
+    }
+
+    maybeEmitCaughtUp();
+  }
+
+  private ArrayList<TopicPartition> assignPartitions(Consumer consumer, Collection<Subscription> subscriptions) {
+    var assignments = new ArrayList<TopicPartition>();
+    for (var subscription : subscriptions) {
+      if (subscription.partition().partition() >= 0)
+        // client is interested in a particular topic-partition
+        assignments.add(subscription.partition());
+      else
+        // client wants to consume the entire topic
+        for (var partitionInfo : consumer.partitionsFor(subscription.partition().topic()))
+          assignments.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+    }
+    consumer.assign(assignments);
+    return assignments;
+  }
+
+  private void seekToPositions(Consumer consumer, Collection<Subscription> subscriptions) {
+    var timestampsToSearch = new HashMap<TopicPartition, Long>();
+
+    for (var subscription : subscriptions) {
+      if (subscription.type() != null) {
+        switch (subscription.type()) {
+          case 0:
+            consumer.seek(subscription.partition(), subscription.position());
+            break;
+
+          case 1:
+            timestampsToSearch.put(subscription.partition(), subscription.position());
+            break;
+        }
       }
-      consumer.assign(assignments);
+    }
 
-      // We'll also fire the assigned notification manually, since the
-      // onPartitionsAssigned callback is not invoked on manual assignment. This
-      // keeps the behaviour consistent and supports synchronism on the
-      // processor side.
-      onPartitionsAssigned(assignments);
-
-      // We'll also store the end offsets of all assigned partitions. This
-      // allows us to fire the "caught_up" notification, issued after all the
-      // records, existing at the time of the assignment, are processed.
-      this.endOffsets = new HashSet<>();
-      for (var entry : consumer.endOffsets(assignments).entrySet()) {
-        if (entry.getValue() > 0)
-          this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
-      }
-
-      maybeEmitCaughtUp();
-    } else {
-      // in a consumer group -> subscribe to the desired topics
-      var topics = StreamSupport.stream(subscriptions.spliterator(), false)
-          .map(subscription -> subscription.topic()).distinct()
-          .toList();
-      consumer.subscribe(topics, this);
+    for (var positionEntry : consumer.offsetsForTimes(timestampsToSearch).entrySet()) {
+      if (positionEntry.getValue() != null)
+        consumer.seek(positionEntry.getKey(), positionEntry.getValue().offset());
     }
   }
 
@@ -251,7 +300,13 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     return result;
   }
 
-  record Opts(Properties consumerProps, Collection<TopicPartition> subscriptions, Map<String, Object> pollerProps) {
+  record Opts(Properties consumerProps, Collection<Subscription> subscriptions, Map<String, Object> pollerProps) {
+  }
+
+  record ConsumerPosition(TopicPartition partition, long offset) {
+  }
+
+  record Subscription(TopicPartition partition, Integer type, Long position) {
   }
 }
 
@@ -259,7 +314,5 @@ final class Consumer extends KafkaConsumer<String, byte[]> {
   public Consumer(Properties properties) {
     super(properties);
   }
-}
 
-record ConsumerPosition(TopicPartition partition, long offset) {
 }
