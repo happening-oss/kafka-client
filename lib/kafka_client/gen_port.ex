@@ -63,7 +63,7 @@ defmodule KafkaClient.GenPort do
     :ok
   end
 
-  @spec port :: port
+  @spec port :: port | nil
   def port, do: Process.get({__MODULE__, :port})
 
   @spec call(GenServer.server(), atom, [term], pos_integer | :infinity) :: term
@@ -93,8 +93,11 @@ defmodule KafkaClient.GenPort do
   end
 
   @impl GenServer
-  def handle_info({port, {:exit_status, status}}, state) when is_port(port),
-    do: handle_port_terminated(status, state)
+  def handle_info({port, {:exit_status, status}}, state) when is_port(port) do
+    Logger.error("unexpected port exit with status #{status}")
+    Process.delete({__MODULE__, :port})
+    {:stop, :port_crash, state}
+  end
 
   @impl GenServer
   def handle_info({port, {:data, data}}, state) when is_port(port) do
@@ -120,11 +123,6 @@ defmodule KafkaClient.GenPort do
 
   @impl GenServer
   def handle_cast(message, state), do: callback().handle_cast(message, state)
-
-  defp handle_port_terminated(exit_status, state) do
-    Logger.error("unexpected port exit with status #{exit_status}")
-    {:stop, :port_crash, %{state | port: nil}}
-  end
 
   defp handle_special_port_message({:"$kafka_consumer_response", ref, reply}) do
     {from, calls} = Map.pop!(calls(), ref)
