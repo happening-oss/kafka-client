@@ -24,6 +24,10 @@ defmodule KafkaClient.Admin do
   @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
   defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
+  @doc "Returns the list of topics."
+  @spec list_topics(GenServer.server()) :: [KafkaClient.topic()]
+  def list_topics(server), do: GenPort.call(server, :list_topics)
+
   @doc "Returns the list of partitions for the given topics."
   @spec describe_topics(GenServer.server(), [KafkaClient.topic()]) ::
           %{KafkaClient.topic() => [KafkaClient.partition()]}

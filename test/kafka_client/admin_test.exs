@@ -4,6 +4,13 @@ defmodule KafkaClient.AdminTest do
   import KafkaClient.Test.Helper
   alias KafkaClient.Admin
 
+  test "list_topics" do
+    topic = new_test_topic()
+    pid = start_supervised!({Admin, servers: ["localhost:9092"]})
+    recreate_topics([topic])
+    assert topic in Admin.list_topics(pid)
+  end
+
   test "describe_topics" do
     topic1 = new_test_topic()
     topic2 = new_test_topic()

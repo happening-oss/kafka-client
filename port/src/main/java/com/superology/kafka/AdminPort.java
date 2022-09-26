@@ -34,11 +34,21 @@ public class AdminPort implements Port {
             output.emitCallResponse(command, describeTopics(admin, command));
             break;
 
+          case "list_topics":
+            output.emitCallResponse(command, listTopics(admin));
+            break;
+
           default:
             throw new RuntimeException("Invalid command: " + command.name());
         }
       }
     }
+  }
+
+  private OtpErlangList listTopics(Admin admin) throws InterruptedException, ExecutionException {
+    return Erlang.toList(
+        admin.listTopics().names().get(),
+        name -> new OtpErlangBinary(name.getBytes()));
   }
 
   private OtpErlangTuple describeTopics(Admin admin, Port.Command command) throws InterruptedException {
