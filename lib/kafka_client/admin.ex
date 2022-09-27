@@ -14,7 +14,7 @@ defmodule KafkaClient.Admin do
     GenPort.start_link(
       __MODULE__,
       nil,
-      "AdminPort",
+      "admin.Main",
       [%{"bootstrap.servers" => opts |> Keyword.fetch!(:servers) |> Enum.join(",")}],
       Keyword.take(opts, ~w/name/a)
     )

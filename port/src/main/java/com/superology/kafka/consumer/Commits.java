@@ -1,4 +1,4 @@
-package com.superology.kafka;
+package com.superology.kafka.consumer;
 
 import java.time.Duration;
 import java.util.*;
@@ -9,13 +9,13 @@ import org.apache.kafka.common.*;
  * Responsible for committing offsets to Kafka. This class aggregates pending
  * commits and periodically flushes them to Kafka.
  */
-final class ConsumerCommits {
+final class Commits {
   PartitionOffsets pendingCommits = new PartitionOffsets();
   Consumer consumer;
   long commitIntervalNs;
   long lastCommit;
 
-  public ConsumerCommits(Consumer consumer, long commitIntervalMs) {
+  public Commits(Consumer consumer, long commitIntervalMs) {
     this.consumer = consumer;
     this.commitIntervalNs = java.time.Duration.ofMillis(commitIntervalMs).toNanos();
     this.lastCommit = System.nanoTime() - commitIntervalNs;

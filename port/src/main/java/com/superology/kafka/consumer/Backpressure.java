@@ -1,4 +1,4 @@
-package com.superology.kafka;
+package com.superology.kafka.consumer;
 
 import java.util.*;
 
@@ -19,12 +19,12 @@ import org.apache.kafka.clients.consumer.*;
  * When a record is removed from the queue, if the queue is small enough,
  * polling from the corresponding partition will be resumed.
  */
-final class ConsumerBackpressure {
+final class Backpressure {
   private Consumer consumer;
   private HashSet<TopicPartition> pausedPartitions = new HashSet<TopicPartition>();
   private HashMap<TopicPartition, Queue> queues = new HashMap<TopicPartition, Queue>();
 
-  public ConsumerBackpressure(Consumer consumer) {
+  public Backpressure(Consumer consumer) {
     this.consumer = consumer;
   }
 

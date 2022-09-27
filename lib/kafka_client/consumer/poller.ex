@@ -9,7 +9,7 @@ defmodule KafkaClient.Consumer.Poller do
   `GenStage`, for example.
 
   This module is a lightweight wrapper around the Java port program, where most of the polling
-  logic resides. Take a look at `ConsumerPort` in Java for details. In a nutshell, this is a
+  logic resides. Take a look at `consumer.Main` in Java for details. In a nutshell, this is a
   `GenServer` process which starts the port, and forwards the notifications emitted by the Java
   program to the client process, called _processor_. Implementing the processor is the
   responsibility of the client.
@@ -193,7 +193,7 @@ defmodule KafkaClient.Consumer.Poller do
     GenPort.start_link(
       __MODULE__,
       Keyword.fetch!(opts, :processor),
-      "ConsumerPort",
+      "consumer.Main",
       [consumer_params, subscriptions, poller_properties],
       Keyword.take(opts, ~w/name/a)
     )

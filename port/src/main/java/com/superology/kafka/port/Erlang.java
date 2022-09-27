@@ -1,4 +1,4 @@
-package com.superology.kafka;
+package com.superology.kafka.port;
 
 import java.io.*;
 import java.util.*;
@@ -14,7 +14,7 @@ import com.ericsson.otp.erlang.*;
  * Most of the heavy lifting is powered by JInterface
  * (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html).
  */
-class Erlang {
+public class Erlang {
   // This is basically a Java version of Erlang's term_to_binary.
   public static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
     try (var otpOutStream = new OtpOutputStream(erlangTerm);

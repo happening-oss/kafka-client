@@ -1,4 +1,4 @@
-package com.superology.kafka;
+package com.superology.kafka.port;
 
 import java.io.*;
 import java.util.concurrent.*;
@@ -8,12 +8,12 @@ import com.ericsson.otp.erlang.*;
  * The output thread of a port program. This thread is responsible for sending
  * messages to Elixir. Messages are sent as Erlang/Elixir terms.
  *
- * See {@link PortDriver} for details on port architecture. See {@link
- * ErlangTermFormat} for details on data encoding.
+ * See {@link Driver} for details on port architecture. See {@link Erlang} for
+ * details on data encoding.
  */
-final class PortOutput implements Runnable {
-  public static PortOutput start() {
-    var output = new PortOutput();
+public final class Output implements Runnable {
+  public static Output start() {
+    var output = new Output();
 
     // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(output);
@@ -25,7 +25,7 @@ final class PortOutput implements Runnable {
 
   private BlockingQueue<Message> messages;
 
-  private PortOutput() {
+  private Output() {
     messages = new LinkedBlockingQueue<Message>();
   }
 

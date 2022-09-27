@@ -1,4 +1,4 @@
-package com.superology.kafka;
+package com.superology.kafka.admin;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -8,13 +8,12 @@ import org.apache.kafka.common.*;
 
 import com.ericsson.otp.erlang.*;
 
-/*
- * Exposes the {@link Admin} interface to Elixir.
- */
-public class AdminPort implements Port {
+import com.superology.kafka.port.*;
+
+public class Main implements Port {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
-    PortDriver.run(args, new AdminPort());
+    Driver.run(args, new Main());
   }
 
   private Map<String, Handler> dispatchMap = Map.ofEntries(
@@ -25,7 +24,7 @@ public class AdminPort implements Port {
       Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets));
 
   @Override
-  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
+  public int run(Worker worker, Output output, Object[] args) throws Exception {
     @SuppressWarnings("unchecked")
     var props = mapToProperties((Map<Object, Object>) args[0]);
 
@@ -39,11 +38,11 @@ public class AdminPort implements Port {
     }
   }
 
-  private Integer stop(Admin admin, Port.Command command, PortOutput output) {
+  private Integer stop(Admin admin, Port.Command command, Output output) {
     return 0;
   }
 
-  private Integer listTopics(Admin admin, Port.Command command, PortOutput output)
+  private Integer listTopics(Admin admin, Port.Command command, Output output)
       throws InterruptedException, ExecutionException {
     output.emitCallResponse(
         command,
@@ -54,7 +53,7 @@ public class AdminPort implements Port {
     return null;
   }
 
-  private Integer describeTopics(Admin admin, Port.Command command, PortOutput output)
+  private Integer describeTopics(Admin admin, Port.Command command, Output output)
       throws InterruptedException {
     @SuppressWarnings("unchecked")
     var topics = (Collection<String>) command.args()[0];
@@ -82,7 +81,7 @@ public class AdminPort implements Port {
     return null;
   }
 
-  private Integer listEndOffsets(Admin admin, Port.Command command, PortOutput output)
+  private Integer listEndOffsets(Admin admin, Port.Command command, Output output)
       throws InterruptedException {
 
     var topicPartitionOffsets = new HashMap<TopicPartition, OffsetSpec>();
@@ -114,7 +113,7 @@ public class AdminPort implements Port {
     return null;
   }
 
-  private Integer listConsumerGroupOffsets(Admin admin, Port.Command command, PortOutput output)
+  private Integer listConsumerGroupOffsets(Admin admin, Port.Command command, Output output)
       throws InterruptedException {
     var topicPartitions = new LinkedList<TopicPartition>();
 
@@ -170,6 +169,6 @@ public class AdminPort implements Port {
 
   @FunctionalInterface
   interface Handler {
-    Integer handle(Admin admin, Port.Command command, PortOutput output) throws Exception;
+    Integer handle(Admin admin, Port.Command command, Output output) throws Exception;
   }
 }

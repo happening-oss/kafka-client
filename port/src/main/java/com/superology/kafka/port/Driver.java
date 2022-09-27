@@ -1,4 +1,4 @@
-package com.superology.kafka;
+package com.superology.kafka.port;
 
 import java.io.*;
 import java.util.*;
@@ -11,10 +11,10 @@ import java.util.*;
  * This class splits the port into three threads: the main (input) thread, the
  * worker, and the output. The main thread (powered by this class) accepts
  * incoming messages from Erlang/Elixir, which are sent as encoded Erlang terms
- * (see {@link ErlangTermFormat}). These messages are forwarded to the worker
- * thread (powered by {@link PortWorker}), which where the actual concrete logic
- * of the port is running. Finally, the output thread ({@link PortOutput}) is
- * responsible for sendin messages to Erlang/Elixir.
+ * (see {@link Erlang}). These messages are forwarded to the worker thread
+ * (powered by {@link Worker}), which where the actual concrete logic of the
+ * port is running. Finally, the output thread ({@link Output}) is responsible
+ * for sending messages to Erlang/Elixir.
  *
  * The reason for separating the input thread from the worker is to support
  * immediate termination even when the worker is busy. When Elixir closes the
@@ -26,7 +26,7 @@ import java.util.*;
  * longer for very large messages. We don't want to pause the worker logic while
  * this is happening, and so these two jobs are running in separate threads.
  */
-class PortDriver {
+public class Driver {
   public static void run(String[] args, Port port) {
     // Reading from the file descriptor 3, which is allocated by Elixir for input
     try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
@@ -34,8 +34,8 @@ class PortDriver {
       for (var arg : args)
         decodedArgs.add(decodeArg(arg));
 
-      var output = PortOutput.start();
-      var worker = PortWorker.start(port, output, decodedArgs.toArray());
+      var output = Output.start();
+      var worker = Worker.start(port, output, decodedArgs.toArray());
 
       while (true) {
         var command = takeCommand(input);
@@ -75,20 +75,5 @@ class PortDriver {
     var bytes = new byte[length];
     input.readFully(bytes);
     return bytes;
-  }
-}
-
-/*
- * Specifies an interface which must be implemented by the concrete port
- * implementations.
- *
- * See {@link ConsumerPort} for an example.
- */
-interface Port {
-  // Invoked in the worker thread to run main port loop. After the function
-  // returns, the program will stop, using the returned value as the exit code.
-  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception;
-
-  record Command(String name, Object[] args, String ref) {
   }
 }

@@ -1,32 +1,34 @@
-package com.superology.kafka;
+package com.superology.kafka.consumer;
 
 import java.util.*;
 import java.util.stream.*;
 
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.*;
+
 import com.ericsson.otp.erlang.*;
+import com.superology.kafka.port.*;
 
 /*
  * Implements the consumer port, which runs the kafka poller loop, and
  * dispatches the polled records to Elixir.
  *
  * In addition, the consumer accepts acknowledgments (acks) from Elixir, which
- * are used for backpressure and commits. See {@link ConsumerBackpressure} and
- * {@link ConsumerCommits} for details.
+ * are used for backpressure and commits. See {@link Backpressure} and {@link
+ * Commits} for details.
  *
- * See {@link PortDriver} for information about port mechanics, such as
- * communication protocol and thread.
+ * See {@link com.superology.kafka.port.Driver} for information about port
+ * mechanics, such as communication protocol and thread.
  */
-public class ConsumerPort implements Port, ConsumerRebalanceListener {
+public class Main implements Port, ConsumerRebalanceListener {
   public static void main(String[] args) {
     System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn");
-    PortDriver.run(args, new ConsumerPort());
+    Driver.run(args, new Main());
   }
 
-  private PortOutput output;
-  private ConsumerCommits commits;
-  private ConsumerBackpressure backpressure;
+  private Output output;
+  private Commits commits;
+  private Backpressure backpressure;
   private HashSet<ConsumerPosition> endOffsets;
   private boolean isAnonymous;
 
@@ -35,7 +37,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
       Map.entry("ack", this::ack));
 
   @Override
-  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
+  public int run(Worker worker, Output output, Object[] args) throws Exception {
     this.output = output;
 
     var opts = opts(args);
@@ -49,8 +51,8 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
       var pollInterval = (int) opts.pollerProps().getOrDefault("poll_interval", 10);
       var commitInterval = (int) opts.pollerProps().getOrDefault("commmit_interval", 5000);
-      commits = new ConsumerCommits(consumer, commitInterval);
-      backpressure = new ConsumerBackpressure(consumer);
+      commits = new Commits(consumer, commitInterval);
+      backpressure = new Backpressure(consumer);
 
       while (true) {
         // commands issued by Elixir, such as ack or stop

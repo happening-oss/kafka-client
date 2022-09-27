@@ -1,14 +1,14 @@
-package com.superology.kafka;
+package com.superology.kafka.port;
 
 import java.util.*;
 import java.util.concurrent.*;
 
 /*
- * The worker thread of a port program. See {@link PortDriver} for details.
+ * The worker thread of a port program. See {@link Driver} for details.
  */
-public class PortWorker implements Runnable {
-  public static PortWorker start(Port port, PortOutput output, Object[] args) {
-    var worker = new PortWorker(port, output, args);
+public class Worker implements Runnable {
+  public static Worker start(Port port, Output output, Object[] args) {
+    var worker = new Worker(port, output, args);
 
     // Using a daemon thread to ensure program termination if the main thread stops.
     var consumerThread = new Thread(worker);
@@ -20,10 +20,10 @@ public class PortWorker implements Runnable {
 
   private BlockingQueue<Port.Command> commands = new LinkedBlockingQueue<>();
   private Port port;
-  private PortOutput output;
+  private Output output;
   private Object[] args;
 
-  private PortWorker(Port port, PortOutput output, Object[] args) {
+  private Worker(Port port, Output output, Object[] args) {
     this.port = port;
     this.output = output;
     this.args = args;
