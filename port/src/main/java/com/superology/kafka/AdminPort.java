@@ -18,36 +18,41 @@ public class AdminPort implements Port {
   }
 
   private Map<String, Handler> dispatchMap = Map.ofEntries(
+      Map.entry("stop", this::stop),
       Map.entry("describe_topics", this::describeTopics),
       Map.entry("list_topics", this::listTopics));
 
   @Override
-  public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
+  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     @SuppressWarnings("unchecked")
     var props = mapToProperties((Map<Object, Object>) args[0]);
 
     try (var admin = Admin.create(props)) {
       while (true) {
         var command = worker.take();
-
-        if (command.name().equals("stop"))
-          return;
-
-        dispatchMap.get(command.name()).handle(admin, command, output);
+        var exitCode = dispatchMap.get(command.name()).handle(admin, command, output);
+        if (exitCode != null)
+          return exitCode;
       }
     }
   }
 
-  private void listTopics(Admin admin, Port.Command command, PortOutput output)
+  private Integer stop(Admin admin, Port.Command command, PortOutput output) {
+    return 0;
+  }
+
+  private Integer listTopics(Admin admin, Port.Command command, PortOutput output)
       throws InterruptedException, ExecutionException {
     output.emitCallResponse(
         command,
         Erlang.toList(
             admin.listTopics().names().get(),
             name -> new OtpErlangBinary(name.getBytes())));
+
+    return null;
   }
 
-  private void describeTopics(Admin admin, Port.Command command, PortOutput output)
+  private Integer describeTopics(Admin admin, Port.Command command, PortOutput output)
       throws InterruptedException {
     @SuppressWarnings("unchecked")
     var topics = (Collection<String>) command.args()[0];
@@ -71,6 +76,8 @@ public class AdminPort implements Port {
     }
 
     output.emitCallResponse(command, response);
+
+    return null;
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {
@@ -83,6 +90,6 @@ public class AdminPort implements Port {
 
   @FunctionalInterface
   interface Handler {
-    void handle(Admin admin, Port.Command command, PortOutput output) throws Exception;
+    Integer handle(Admin admin, Port.Command command, PortOutput output) throws Exception;
   }
 }

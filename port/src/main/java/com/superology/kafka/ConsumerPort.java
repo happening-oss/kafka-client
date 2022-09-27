@@ -36,7 +36,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
       Map.entry("committed_offsets", this::committedOffsets));
 
   @Override
-  public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
+  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     this.output = output;
 
     var opts = opts(args);
@@ -55,8 +55,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
       while (true) {
         // commands issued by Elixir, such as ack or stop
-        for (var command : worker.drainCommands())
-          dispatchMap.get(command.name()).handle(consumer, command);
+        for (var command : worker.drainCommands()) {
+          var exitCode = dispatchMap.get(command.name()).handle(consumer, command);
+          if (exitCode != null)
+            return exitCode;
+        }
 
         // Backpressure and commits are collected while handling Elixir
         // commands. Now we're flushing the final state (pauses and commits).
@@ -105,15 +108,14 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     return new Opts(consumerProps, subscriptions, pollerProps);
   }
 
-  private void stop(Consumer consumer, Port.Command command) {
+  private int stop(Consumer consumer, Port.Command command) {
     if (!isAnonymous)
       commits.flush(true);
 
-    consumer.close();
-    System.exit(0);
+    return 0;
   }
 
-  private void ack(Consumer consumer, Port.Command command) throws InterruptedException {
+  private Integer ack(Consumer consumer, Port.Command command) throws InterruptedException {
     var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
 
     backpressure.recordProcessed(ack.partition());
@@ -124,12 +126,16 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
       }
     } else
       commits.add(ack.partition(), ack.offset());
+
+    return null;
   }
 
-  private void committedOffsets(Consumer consumer, Port.Command command) throws InterruptedException {
+  private Integer committedOffsets(Consumer consumer, Port.Command command) throws InterruptedException {
     output.emitCallResponse(
         command,
         committedOffsetsToOtp(consumer.committed(consumer.assignment())));
+
+    return null;
   }
 
   private static TopicPartition toTopicPartition(Object[] args) {
@@ -309,7 +315,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   @FunctionalInterface
   interface Handler {
-    void handle(Consumer consumer, Port.Command command) throws Exception;
+    Integer handle(Consumer consumer, Port.Command command) throws Exception;
   }
 }
 
@@ -317,5 +323,4 @@ final class Consumer extends KafkaConsumer<String, byte[]> {
   public Consumer(Properties properties) {
     super(properties);
   }
-
 }

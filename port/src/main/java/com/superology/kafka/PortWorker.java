@@ -32,8 +32,8 @@ public class PortWorker implements Runnable {
   @Override
   public void run() {
     try {
-      port.run(this, output, args);
-      System.exit(0);
+      var exitStatus = port.run(this, output, args);
+      System.exit(exitStatus);
     } catch (Exception e) {
       System.err.println(e.getMessage());
       e.printStackTrace();
