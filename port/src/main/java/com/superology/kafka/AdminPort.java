@@ -17,6 +17,10 @@ public class AdminPort implements Port {
     PortDriver.run(args, new AdminPort());
   }
 
+  private Map<String, Handler> dispatchMap = Map.ofEntries(
+      Map.entry("describe_topics", this::describeTopics),
+      Map.entry("list_topics", this::listTopics));
+
   @Override
   public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     @SuppressWarnings("unchecked")
@@ -26,34 +30,28 @@ public class AdminPort implements Port {
       while (true) {
         var command = worker.take();
 
-        switch (command.name()) {
-          case "stop":
-            return;
+        if (command.name().equals("stop"))
+          return;
 
-          case "describe_topics":
-            output.emitCallResponse(command, describeTopics(admin, command));
-            break;
-
-          case "list_topics":
-            output.emitCallResponse(command, listTopics(admin));
-            break;
-
-          default:
-            throw new RuntimeException("Invalid command: " + command.name());
-        }
+        dispatchMap.get(command.name()).handle(admin, command, output);
       }
     }
   }
 
-  private OtpErlangList listTopics(Admin admin) throws InterruptedException, ExecutionException {
-    return Erlang.toList(
-        admin.listTopics().names().get(),
-        name -> new OtpErlangBinary(name.getBytes()));
+  private void listTopics(Admin admin, Port.Command command, PortOutput output)
+      throws InterruptedException, ExecutionException {
+    output.emitCallResponse(
+        command,
+        Erlang.toList(
+            admin.listTopics().names().get(),
+            name -> new OtpErlangBinary(name.getBytes())));
   }
 
-  private OtpErlangTuple describeTopics(Admin admin, Port.Command command) throws InterruptedException {
+  private void describeTopics(Admin admin, Port.Command command, PortOutput output)
+      throws InterruptedException {
     @SuppressWarnings("unchecked")
     var topics = (Collection<String>) command.args()[0];
+    OtpErlangObject response;
     try {
       var descriptions = admin.describeTopics(TopicCollection.ofTopicNames(topics));
 
@@ -67,10 +65,12 @@ public class AdminPort implements Port {
             return new AbstractMap.SimpleEntry<>(topic, partitions);
           });
 
-      return Erlang.ok(map);
+      response = Erlang.ok(map);
     } catch (ExecutionException e) {
-      return Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }
+
+    output.emitCallResponse(command, response);
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {
@@ -79,5 +79,10 @@ public class AdminPort implements Port {
     var result = new Properties();
     result.putAll(map);
     return result;
+  }
+
+  @FunctionalInterface
+  interface Handler {
+    void handle(Admin admin, Port.Command command, PortOutput output) throws Exception;
   }
 }

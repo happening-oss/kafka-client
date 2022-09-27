@@ -30,6 +30,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   private HashSet<ConsumerPosition> endOffsets;
   private boolean isAnonymous;
 
+  private Map<String, Handler> dispatchMap = Map.ofEntries(
+      Map.entry("stop", this::stop),
+      Map.entry("ack", this::ack),
+      Map.entry("committed_offsets", this::committedOffsets));
+
   @Override
   public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     this.output = output;
@@ -51,7 +56,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
       while (true) {
         // commands issued by Elixir, such as ack or stop
         for (var command : worker.drainCommands())
-          handleCommand(consumer, command);
+          dispatchMap.get(command.name()).handle(consumer, command);
 
         // Backpressure and commits are collected while handling Elixir
         // commands. Now we're flushing the final state (pauses and commits).
@@ -100,38 +105,31 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     return new Opts(consumerProps, subscriptions, pollerProps);
   }
 
-  private void handleCommand(Consumer consumer, Port.Command command) throws Exception {
-    switch (command.name()) {
-      case "ack":
-        var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
+  private void stop(Consumer consumer, Port.Command command) {
+    if (!isAnonymous)
+      commits.flush(true);
 
-        backpressure.recordProcessed(ack.partition());
-        if (isAnonymous) {
-          if (endOffsets != null) {
-            endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
-            maybeEmitCaughtUp();
-          }
-        } else
-          commits.add(ack.partition(), ack.offset());
-        break;
+    consumer.close();
+    System.exit(0);
+  }
 
-      case "stop":
-        if (!isAnonymous)
-          commits.flush(true);
+  private void ack(Consumer consumer, Port.Command command) throws InterruptedException {
+    var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
 
-        consumer.close();
-        System.exit(0);
-        break;
+    backpressure.recordProcessed(ack.partition());
+    if (isAnonymous) {
+      if (endOffsets != null) {
+        endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
+        maybeEmitCaughtUp();
+      }
+    } else
+      commits.add(ack.partition(), ack.offset());
+  }
 
-      case "committed_offsets":
-        output.emitCallResponse(
-            command,
-            committedOffsetsToOtp(consumer.committed(consumer.assignment())));
-        break;
-
-      default:
-        throw new Exception("unknown command " + command.name());
-    }
+  private void committedOffsets(Consumer consumer, Port.Command command) throws InterruptedException {
+    output.emitCallResponse(
+        command,
+        committedOffsetsToOtp(consumer.committed(consumer.assignment())));
   }
 
   private static TopicPartition toTopicPartition(Object[] args) {
@@ -307,6 +305,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   }
 
   record Subscription(TopicPartition partition, Integer type, Long position) {
+  }
+
+  @FunctionalInterface
+  interface Handler {
+    void handle(Consumer consumer, Port.Command command) throws Exception;
   }
 }
 
