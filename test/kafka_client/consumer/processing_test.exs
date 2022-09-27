@@ -1,6 +1,7 @@
 defmodule KafkaClient.Consumer.ProcessingTest do
   use ExUnit.Case, async: true
   import KafkaClient.Test.Helper
+  alias KafkaClient.Admin
 
   test "sequential processing on a single topic-partition" do
     consumer = start_consumer!()
@@ -58,14 +59,19 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     process_next_record!(topic, 1)
     last_processed_record_partition_1 = process_next_record!(topic, 1)
 
+    admin = start_supervised!({Admin, servers: servers()})
+
     eventually(
       fn ->
-        offsets = KafkaClient.Consumer.Poller.committed_offsets(poller(consumer))
+        group_id = consumer.group_id
+        partitions = [{topic, 0}, {topic, 1}]
+        {:ok, committed} = Admin.list_consumer_group_offsets(admin, group_id, partitions)
 
-        assert Enum.sort(offsets) == [
-                 {topic, 0, last_processed_record_partition_0.offset + 1},
-                 {topic, 1, last_processed_record_partition_1.offset + 1}
-               ]
+        assert committed ==
+                 %{
+                   {topic, 0} => last_processed_record_partition_0.offset + 1,
+                   {topic, 1} => last_processed_record_partition_1.offset + 1
+                 }
       end,
       attempts: 20,
       delay: 500

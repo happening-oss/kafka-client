@@ -30,8 +30,12 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   private HashSet<ConsumerPosition> endOffsets;
   private boolean isAnonymous;
 
+  private Map<String, Handler> dispatchMap = Map.ofEntries(
+      Map.entry("stop", this::stop),
+      Map.entry("ack", this::ack));
+
   @Override
-  public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
+  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
     this.output = output;
 
     var opts = opts(args);
@@ -50,8 +54,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
       while (true) {
         // commands issued by Elixir, such as ack or stop
-        for (var command : worker.drainCommands())
-          handleCommand(consumer, command);
+        for (var command : worker.drainCommands()) {
+          var exitCode = dispatchMap.get(command.name()).handle(consumer, command);
+          if (exitCode != null)
+            return exitCode;
+        }
 
         // Backpressure and commits are collected while handling Elixir
         // commands. Now we're flushing the final state (pauses and commits).
@@ -100,38 +107,26 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
     return new Opts(consumerProps, subscriptions, pollerProps);
   }
 
-  private void handleCommand(Consumer consumer, Port.Command command) throws Exception {
-    switch (command.name()) {
-      case "ack":
-        var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
+  private int stop(Consumer consumer, Port.Command command) {
+    if (!isAnonymous)
+      commits.flush(true);
 
-        backpressure.recordProcessed(ack.partition());
-        if (isAnonymous) {
-          if (endOffsets != null) {
-            endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
-            maybeEmitCaughtUp();
-          }
-        } else
-          commits.add(ack.partition(), ack.offset());
-        break;
+    return 0;
+  }
 
-      case "stop":
-        if (!isAnonymous)
-          commits.flush(true);
+  private Integer ack(Consumer consumer, Port.Command command) throws InterruptedException {
+    var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
 
-        consumer.close();
-        System.exit(0);
-        break;
+    backpressure.recordProcessed(ack.partition());
+    if (isAnonymous) {
+      if (endOffsets != null) {
+        endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
+        maybeEmitCaughtUp();
+      }
+    } else
+      commits.add(ack.partition(), ack.offset());
 
-      case "committed_offsets":
-        output.emitCallResponse(
-            command,
-            committedOffsetsToOtp(consumer.committed(consumer.assignment())));
-        break;
-
-      default:
-        throw new Exception("unknown command " + command.name());
-    }
+    return null;
   }
 
   private static TopicPartition toTopicPartition(Object[] args) {
@@ -248,15 +243,13 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
     try {
-      output.emit(new OtpErlangTuple(new OtpErlangObject[] {
+      output.emit(Erlang.tuple(
           new OtpErlangAtom(event),
           Erlang.toList(
               partitions,
-              partition -> new OtpErlangTuple(new OtpErlangObject[] {
+              partition -> Erlang.tuple(
                   new OtpErlangBinary(partition.topic().getBytes()),
-                  new OtpErlangInt(partition.partition())
-              }))
-      }));
+                  new OtpErlangInt(partition.partition())))));
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
     }
@@ -265,12 +258,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
     var headers = Erlang.toList(
         record.headers(),
-        header -> new OtpErlangTuple(new OtpErlangObject[] {
+        header -> Erlang.tuple(
             new OtpErlangBinary(header.key().getBytes()),
-            new OtpErlangBinary(header.value())
-        }));
+            new OtpErlangBinary(header.value())));
 
-    return new OtpErlangTuple(new OtpErlangObject[] {
+    return Erlang.tuple(
         new OtpErlangAtom("record"),
         new OtpErlangBinary(record.topic().getBytes()),
         new OtpErlangInt(record.partition()),
@@ -278,18 +270,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         new OtpErlangLong(record.timestamp()),
         headers,
         new OtpErlangBinary(record.key().getBytes()),
-        new OtpErlangBinary(record.value()),
-    });
-  }
-
-  static private OtpErlangObject committedOffsetsToOtp(Map<TopicPartition, OffsetAndMetadata> map) {
-    return Erlang.toList(
-        map.entrySet().stream().filter(entry -> entry.getValue() != null).toList(),
-        entry -> new OtpErlangTuple(new OtpErlangObject[] {
-            new OtpErlangBinary(entry.getKey().topic().getBytes()),
-            new OtpErlangInt(entry.getKey().partition()),
-            new OtpErlangLong(entry.getValue().offset())
-        }));
+        new OtpErlangBinary(record.value()));
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {
@@ -308,11 +289,15 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   record Subscription(TopicPartition partition, Integer type, Long position) {
   }
+
+  @FunctionalInterface
+  interface Handler {
+    Integer handle(Consumer consumer, Port.Command command) throws Exception;
+  }
 }
 
 final class Consumer extends KafkaConsumer<String, byte[]> {
   public Consumer(Properties properties) {
     super(properties);
   }
-
 }

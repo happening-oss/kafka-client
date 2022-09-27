@@ -109,7 +109,7 @@ defmodule KafkaClient.Consumer.Poller do
   """
   @type subscription ::
           KafkaClient.topic()
-          | {KafkaClient.topic(), KafkaClient.partition()}
+          | KafkaClient.topic_partition()
           | {KafkaClient.topic(), KafkaClient.partition(), subscription_position}
 
   @type subscription_position ::
@@ -141,8 +141,8 @@ defmodule KafkaClient.Consumer.Poller do
       - `{:record, record}` - a record is polled
   """
   @type notification ::
-          {:assigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
-          | {:unassigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
+          {:assigned, [KafkaClient.topic_partition()]}
+          | {:unassigned, [KafkaClient.topic_partition()]}
           | :caught_up
           | {:record, record}
 
@@ -247,11 +247,6 @@ defmodule KafkaClient.Consumer.Poller do
   @doc "Returns the record fields used as a meta in telemetry events."
   @spec telemetry_meta(record) :: %{atom => any}
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
-
-  @doc "Returns committed offsets for the currently assigned partitions of this consumer."
-  @spec committed_offsets(GenServer.server()) ::
-          [{KafkaClient.topic(), KafkaClient.partition(), KafkaClient.offset()}]
-  def committed_offsets(server), do: GenPort.call(server, :committed_offsets)
 
   @impl GenServer
   def init(processor) do

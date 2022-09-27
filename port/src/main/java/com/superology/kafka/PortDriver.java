@@ -85,8 +85,9 @@ class PortDriver {
  * See {@link ConsumerPort} for an example.
  */
 interface Port {
-  // Invoked in the worker thread to run main port loop.
-  public void run(PortWorker worker, PortOutput output, Object[] args) throws Exception;
+  // Invoked in the worker thread to run main port loop. After the function
+  // returns, the program will stop, using the returned value as the exit code.
+  public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception;
 
   record Command(String name, Object[] args, String ref) {
   }
