@@ -243,15 +243,13 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
     try {
-      output.emit(new OtpErlangTuple(new OtpErlangObject[] {
+      output.emit(Erlang.tuple(
           new OtpErlangAtom(event),
           Erlang.toList(
               partitions,
-              partition -> new OtpErlangTuple(new OtpErlangObject[] {
+              partition -> Erlang.tuple(
                   new OtpErlangBinary(partition.topic().getBytes()),
-                  new OtpErlangInt(partition.partition())
-              }))
-      }));
+                  new OtpErlangInt(partition.partition())))));
     } catch (InterruptedException e) {
       throw new org.apache.kafka.common.errors.InterruptException(e);
     }
@@ -260,12 +258,11 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
   static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
     var headers = Erlang.toList(
         record.headers(),
-        header -> new OtpErlangTuple(new OtpErlangObject[] {
+        header -> Erlang.tuple(
             new OtpErlangBinary(header.key().getBytes()),
-            new OtpErlangBinary(header.value())
-        }));
+            new OtpErlangBinary(header.value())));
 
-    return new OtpErlangTuple(new OtpErlangObject[] {
+    return Erlang.tuple(
         new OtpErlangAtom("record"),
         new OtpErlangBinary(record.topic().getBytes()),
         new OtpErlangInt(record.partition()),
@@ -273,8 +270,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         new OtpErlangLong(record.timestamp()),
         headers,
         new OtpErlangBinary(record.key().getBytes()),
-        new OtpErlangBinary(record.value()),
-    });
+        new OtpErlangBinary(record.value()));
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {

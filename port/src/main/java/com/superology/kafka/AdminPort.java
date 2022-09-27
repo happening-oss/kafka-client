@@ -69,7 +69,7 @@ public class AdminPort implements Port {
             var partitions = Erlang.toList(
                 entry.getValue().partitions(),
                 partition -> new OtpErlangInt(partition.partition()));
-            return new AbstractMap.SimpleEntry<>(topic, partitions);
+            return Erlang.mapEntry(topic, partitions);
           });
 
       response = Erlang.ok(map);
@@ -97,11 +97,10 @@ public class AdminPort implements Port {
       var map = Erlang.toMap(
           admin.listOffsets(topicPartitionOffsets).all().get(),
           entry -> {
-            return new AbstractMap.SimpleEntry<>(
-                new OtpErlangTuple(new OtpErlangObject[] {
+            return Erlang.mapEntry(
+                Erlang.tuple(
                     new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                    new OtpErlangInt(entry.getKey().partition())
-                }),
+                    new OtpErlangInt(entry.getKey().partition())),
                 new OtpErlangLong(entry.getValue().offset()));
 
           });
@@ -142,16 +141,17 @@ public class AdminPort implements Port {
             else
               offset = new OtpErlangLong(entry.getValue().offset());
 
-            return new AbstractMap.SimpleEntry<>(
-                new OtpErlangTuple(new OtpErlangObject[] {
+            return Erlang.mapEntry(
+                Erlang.tuple(
                     new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                    new OtpErlangInt(entry.getKey().partition())
-                }),
+                    new OtpErlangInt(entry.getKey().partition())),
                 offset);
           });
 
       response = Erlang.ok(map);
-    } catch (ExecutionException e) {
+    } catch (
+
+    ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }
 

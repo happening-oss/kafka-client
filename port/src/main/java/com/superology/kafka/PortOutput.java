@@ -30,10 +30,10 @@ final class PortOutput implements Runnable {
   }
 
   public void emitCallResponse(Port.Command command, OtpErlangObject response) throws InterruptedException {
-    emit(new OtpErlangTuple(new OtpErlangObject[] {
+    emit(Erlang.tuple(
         new OtpErlangAtom("$kafka_consumer_response"),
         new OtpErlangBinary(command.ref().getBytes()),
-        response }));
+        response));
   }
 
   public void emit(OtpErlangObject message) throws InterruptedException {
@@ -65,11 +65,10 @@ final class PortOutput implements Runnable {
           var duration = sentAt - message.startTime();
           notify(
               output,
-              new OtpErlangTuple(new OtpErlangObject[] {
+              Erlang.tuple(
                   new OtpErlangAtom("metrics"),
                   new OtpErlangLong(sentAt - sendingAt),
-                  new OtpErlangLong(duration)
-              }));
+                  new OtpErlangLong(duration)));
         }
       }
     } catch (Exception e) {

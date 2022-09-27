@@ -35,12 +35,16 @@ class Erlang {
     }
   }
 
+  public static OtpErlangTuple tuple(OtpErlangObject... elements) {
+    return new OtpErlangTuple(elements);
+  }
+
   public static OtpErlangTuple ok(OtpErlangObject value) {
-    return new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom("ok"), value });
+    return tuple(new OtpErlangAtom("ok"), value);
   }
 
   public static OtpErlangTuple error(OtpErlangObject value) {
-    return new OtpErlangTuple(new OtpErlangObject[] { new OtpErlangAtom("error"), value });
+    return tuple(new OtpErlangAtom("error"), value);
   }
 
   public static <T> OtpErlangList toList(Iterable<T> iterable, Function<T, OtpErlangObject> mapper) {
@@ -50,7 +54,7 @@ class Erlang {
 
   public static <K, V> OtpErlangMap toMap(
       Map<K, V> javaMap,
-      Function<Map.Entry<K, V>, AbstractMap.SimpleEntry<OtpErlangObject, OtpErlangObject>> mapper) {
+      Function<Map.Entry<K, V>, Map.Entry<OtpErlangObject, OtpErlangObject>> mapper) {
     var erlangMap = new OtpErlangMap();
 
     for (var entry : javaMap.entrySet()) {
@@ -59,6 +63,11 @@ class Erlang {
     }
 
     return erlangMap;
+  }
+
+  public static Map.Entry<OtpErlangObject, OtpErlangObject> mapEntry(OtpErlangObject key,
+      OtpErlangObject value) {
+    return new AbstractMap.SimpleEntry<>(key, value);
   }
 
   /*
