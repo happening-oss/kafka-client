@@ -33,6 +33,18 @@ defmodule KafkaClient.Admin do
           %{KafkaClient.topic() => [KafkaClient.partition()]}
   def describe_topics(server, topics), do: GenPort.call(server, :describe_topics, [topics])
 
+  @doc """
+  Returns the list of end offsets for the given topic partitions.
+
+  The end offset, also called high watermark, is the offset of the last produced message
+  incremented by one. If no record has been produced, the offset will be zero.
+  """
+  @spec list_end_offsets(GenServer.server(), KafkaClient.topic_partition()) ::
+          {:ok, %{KafkaClient.topic_partition() => KafkaClient.offset()}}
+          | {:error, String.t()}
+  def list_end_offsets(server, topic_partitions),
+    do: GenPort.call(server, :list_end_offsets, [topic_partitions])
+
   @impl GenServer
   def init(_), do: {:ok, nil}
 end

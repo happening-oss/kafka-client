@@ -109,7 +109,7 @@ defmodule KafkaClient.Consumer.Poller do
   """
   @type subscription ::
           KafkaClient.topic()
-          | {KafkaClient.topic(), KafkaClient.partition()}
+          | KafkaClient.topic_partition()
           | {KafkaClient.topic(), KafkaClient.partition(), subscription_position}
 
   @type subscription_position ::
@@ -141,8 +141,8 @@ defmodule KafkaClient.Consumer.Poller do
       - `{:record, record}` - a record is polled
   """
   @type notification ::
-          {:assigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
-          | {:unassigned, [{KafkaClient.topic(), KafkaClient.partition()}]}
+          {:assigned, [KafkaClient.topic_partition()]}
+          | {:unassigned, [KafkaClient.topic_partition()]}
           | :caught_up
           | {:record, record}
 

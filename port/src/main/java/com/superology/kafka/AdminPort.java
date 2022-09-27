@@ -20,7 +20,8 @@ public class AdminPort implements Port {
   private Map<String, Handler> dispatchMap = Map.ofEntries(
       Map.entry("stop", this::stop),
       Map.entry("describe_topics", this::describeTopics),
-      Map.entry("list_topics", this::listTopics));
+      Map.entry("list_topics", this::listTopics),
+      Map.entry("list_end_offsets", this::listEndOffsets));
 
   @Override
   public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
@@ -70,6 +71,39 @@ public class AdminPort implements Port {
             return new AbstractMap.SimpleEntry<>(topic, partitions);
           });
 
+      response = Erlang.ok(map);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer listEndOffsets(Admin admin, Port.Command command, PortOutput output)
+      throws InterruptedException, ExecutionException {
+
+    var topicPartitionOffsets = new HashMap<TopicPartition, OffsetSpec>();
+    for (@SuppressWarnings("unchecked")
+    var topicPartitionTuple : ((Iterable<Object[]>) command.args()[0])) {
+      var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
+      topicPartitionOffsets.put(topicPartition, OffsetSpec.latest());
+    }
+
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          admin.listOffsets(topicPartitionOffsets).all().get(),
+          entry -> {
+            return new AbstractMap.SimpleEntry<>(
+                new OtpErlangTuple(new OtpErlangObject[] {
+                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
+                    new OtpErlangInt(entry.getKey().partition())
+                }),
+                new OtpErlangLong(entry.getValue().offset()));
+
+          });
       response = Erlang.ok(map);
     } catch (ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
