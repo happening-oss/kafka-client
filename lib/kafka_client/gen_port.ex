@@ -2,7 +2,8 @@ defmodule KafkaClient.GenPort do
   @moduledoc false
 
   # Elixir part of a generic port implementation. This module is meant to be used with a Java port
-  # powered by the `PortDriver` class. For example, see `KafkaClient.Consumer.Poller`.
+  # powered by the `PortDriver` class. For example implementations, see `KafkaClient.Admin` or
+  # `KafkaClient.Consumer.Poller`.
   #
   # Basic usage:
   #
