@@ -257,7 +257,7 @@ public class Main implements Port, ConsumerRebalanceListener {
     }
   }
 
-  static private OtpErlangObject recordToOtp(ConsumerRecord<String, byte[]> record) {
+  static private OtpErlangObject recordToOtp(ConsumerRecord<byte[], byte[]> record) {
     var headers = Erlang.toList(
         record.headers(),
         header -> Erlang.tuple(
@@ -271,7 +271,7 @@ public class Main implements Port, ConsumerRebalanceListener {
         new OtpErlangLong(record.offset()),
         new OtpErlangLong(record.timestamp()),
         headers,
-        new OtpErlangBinary(record.key().getBytes()),
+        new OtpErlangBinary(record.key()),
         new OtpErlangBinary(record.value()));
   }
 
@@ -298,7 +298,7 @@ public class Main implements Port, ConsumerRebalanceListener {
   }
 }
 
-final class Consumer extends KafkaConsumer<String, byte[]> {
+final class Consumer extends KafkaConsumer<byte[], byte[]> {
   public Consumer(Properties properties) {
     super(properties);
   }

@@ -124,7 +124,7 @@ defmodule KafkaClient.Consumer.Poller do
           offset: KafkaClient.offset(),
           timestamp: KafkaClient.timestamp(),
           headers: [{String.t(), binary}],
-          key: String.t(),
+          key: binary,
           value: binary
         }
 
@@ -186,7 +186,7 @@ defmodule KafkaClient.Consumer.Poller do
         "bootstrap.servers" => Enum.join(servers, ","),
         "group.id" => group_id,
         "enable.auto.commit" => false,
-        "key.deserializer" => "org.apache.kafka.common.serialization.StringDeserializer",
+        "key.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer",
         "value.deserializer" => "org.apache.kafka.common.serialization.ByteArrayDeserializer"
       })
 

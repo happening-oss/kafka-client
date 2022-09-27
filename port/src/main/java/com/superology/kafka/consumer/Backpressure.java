@@ -29,7 +29,7 @@ final class Backpressure {
   }
 
   // Invoked by the poller when a record is polled from the broker.
-  public void recordPolled(ConsumerRecord<String, byte[]> record) {
+  public void recordPolled(ConsumerRecord<byte[], byte[]> record) {
     var partition = new TopicPartition(record.topic(), record.partition());
     var queue = queues.get(partition);
     if (queue == null) {
@@ -86,7 +86,7 @@ final class Backpressure {
       return numMessages() == 0;
     }
 
-    public void recordPolled(ConsumerRecord<String, byte[]> record) {
+    public void recordPolled(ConsumerRecord<byte[], byte[]> record) {
       var messageSize = record.value().length;
       messageSizes.add(messageSize);
       totalBytes += messageSize;
