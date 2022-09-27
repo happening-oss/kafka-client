@@ -58,7 +58,7 @@ defmodule KafkaClient.Test.Helper do
     unless Keyword.get(opts, :await_assigned?, true),
       do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
-    %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions}
+    %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions, group_id: group_id}
   end
 
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)

@@ -21,7 +21,8 @@ public class AdminPort implements Port {
       Map.entry("stop", this::stop),
       Map.entry("describe_topics", this::describeTopics),
       Map.entry("list_topics", this::listTopics),
-      Map.entry("list_end_offsets", this::listEndOffsets));
+      Map.entry("list_end_offsets", this::listEndOffsets),
+      Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets));
 
   @Override
   public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
@@ -82,7 +83,7 @@ public class AdminPort implements Port {
   }
 
   private Integer listEndOffsets(Admin admin, Port.Command command, PortOutput output)
-      throws InterruptedException, ExecutionException {
+      throws InterruptedException {
 
     var topicPartitionOffsets = new HashMap<TopicPartition, OffsetSpec>();
     for (@SuppressWarnings("unchecked")
@@ -104,6 +105,51 @@ public class AdminPort implements Port {
                 new OtpErlangLong(entry.getValue().offset()));
 
           });
+      response = Erlang.ok(map);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer listConsumerGroupOffsets(Admin admin, Port.Command command, PortOutput output)
+      throws InterruptedException {
+    var topicPartitions = new LinkedList<TopicPartition>();
+
+    for (@SuppressWarnings("unchecked")
+    var topicPartitionTuple : ((Iterable<Object[]>) command.args()[1])) {
+      var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
+      topicPartitions.add(topicPartition);
+    }
+
+    var options = new ListConsumerGroupOffsetsOptions();
+    options.topicPartitions(topicPartitions);
+
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          admin.listConsumerGroupOffsets((String) command.args()[0], options)
+              .partitionsToOffsetAndMetadata()
+              .get(),
+          entry -> {
+            OtpErlangObject offset;
+
+            if (entry.getValue() == null)
+              offset = new OtpErlangAtom("nil");
+            else
+              offset = new OtpErlangLong(entry.getValue().offset());
+
+            return new AbstractMap.SimpleEntry<>(
+                new OtpErlangTuple(new OtpErlangObject[] {
+                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
+                    new OtpErlangInt(entry.getKey().partition())
+                }),
+                offset);
+          });
+
       response = Erlang.ok(map);
     } catch (ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));

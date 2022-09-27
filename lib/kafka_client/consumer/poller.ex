@@ -248,11 +248,6 @@ defmodule KafkaClient.Consumer.Poller do
   @spec telemetry_meta(record) :: %{atom => any}
   def telemetry_meta(record), do: Map.take(record, ~w/topic partition offset timestamp/a)
 
-  @doc "Returns committed offsets for the currently assigned partitions of this consumer."
-  @spec committed_offsets(GenServer.server()) ::
-          [{KafkaClient.topic(), KafkaClient.partition(), KafkaClient.offset()}]
-  def committed_offsets(server), do: GenPort.call(server, :committed_offsets)
-
   @impl GenServer
   def init(processor) do
     Process.monitor(processor)

@@ -32,8 +32,7 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
 
   private Map<String, Handler> dispatchMap = Map.ofEntries(
       Map.entry("stop", this::stop),
-      Map.entry("ack", this::ack),
-      Map.entry("committed_offsets", this::committedOffsets));
+      Map.entry("ack", this::ack));
 
   @Override
   public int run(PortWorker worker, PortOutput output, Object[] args) throws Exception {
@@ -126,14 +125,6 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
       }
     } else
       commits.add(ack.partition(), ack.offset());
-
-    return null;
-  }
-
-  private Integer committedOffsets(Consumer consumer, Port.Command command) throws InterruptedException {
-    output.emitCallResponse(
-        command,
-        committedOffsetsToOtp(consumer.committed(consumer.assignment())));
 
     return null;
   }
@@ -284,16 +275,6 @@ public class ConsumerPort implements Port, ConsumerRebalanceListener {
         new OtpErlangBinary(record.key().getBytes()),
         new OtpErlangBinary(record.value()),
     });
-  }
-
-  static private OtpErlangObject committedOffsetsToOtp(Map<TopicPartition, OffsetAndMetadata> map) {
-    return Erlang.toList(
-        map.entrySet().stream().filter(entry -> entry.getValue() != null).toList(),
-        entry -> new OtpErlangTuple(new OtpErlangObject[] {
-            new OtpErlangBinary(entry.getKey().topic().getBytes()),
-            new OtpErlangInt(entry.getKey().partition()),
-            new OtpErlangLong(entry.getValue().offset())
-        }));
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {

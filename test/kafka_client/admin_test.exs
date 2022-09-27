@@ -49,6 +49,25 @@ defmodule KafkaClient.AdminTest do
            }
   end
 
+  test "list_consumer_group_offsets" do
+    pid = start_supervised!({Admin, servers: ["localhost:9092"]})
+
+    consumer = start_consumer!()
+    [topic] = consumer.subscriptions
+
+    produce(topic, partition: 0)
+    produce(topic, partition: 0)
+    produce(topic, partition: 0)
+    last_processed_offset_partition_0 = process_next_record!(topic, 0).offset
+
+    stop_supervised!(consumer.child_id)
+
+    group_id = consumer.group_id
+    topics = [{topic, 0}, {topic, 1}]
+    assert {:ok, committed} = Admin.list_consumer_group_offsets(pid, group_id, topics)
+    assert committed == %{{topic, 0} => last_processed_offset_partition_0 + 1, {topic, 1} => nil}
+  end
+
   test "stop" do
     registered_name = unique_atom("admin")
     admin = start_supervised!({Admin, name: registered_name, servers: ["localhost:9092"]})
