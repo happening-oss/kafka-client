@@ -1,8 +1,39 @@
 defmodule KafkaClient.Producer do
+  @doc """
+  Kafka producer.
+
+  This module wraps the functions from the [Java Producer interface]
+  (https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/KafkaProducer.html).
+  """
+
   use KafkaClient.GenPort
   import Kernel, except: [send: 2]
   alias KafkaClient.GenPort
 
+  @type record :: %{
+          optional(:partition) => KafkaClient.partition() | nil,
+          optional(:timestamp) => KafkaClient.timestamp() | nil,
+          optional(:key) => binary | nil,
+          optional(:value) => binary | nil,
+          optional(:headers) => [{String.t(), binary}],
+          topic: KafkaClient.topic()
+        }
+
+  @type publish_result ::
+          {:ok, KafkaClient.partition(), KafkaClient.offset()}
+          | {:error, String.t()}
+
+  @doc """
+  Starts the producer process.
+
+  On termination, the producer will attempt to flush the buffered messages to the brokers.
+  """
+  @spec start_link(
+          servers: [String.t()],
+          producer_params: %{String.t() => any},
+          name: GenServer.name()
+        ) ::
+          GenServer.on_start()
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
     user_producer_params = Keyword.get(opts, :producer_params, %{})
@@ -27,12 +58,33 @@ defmodule KafkaClient.Producer do
   end
 
   @doc "Synchronously stops the producer process."
-  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  @spec stop(GenServer.server(), timeout) :: :ok | {:error, :not_found}
   defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
+  @doc """
+  Asynhronously sends a record.
+
+  This function returns true as soon as the record has been enqueued in internal producer's state.
+  The record will be sent sometime in the future, depending on the producer settings (see
+  https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/KafkaProducer.html
+  for details).
+
+  If the callback function is provided, it will be invoked after the send has been acknowledged by
+  the brokers.
+
+  If partition and/or timestamp values are not provided, they will be generated, as described in
+  https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/ProducerRecord.html.
+  """
+  @spec send(GenServer.server(), record, on_completion: (publish_result -> any)) :: :ok
   def send(server, record, opts \\ []),
     do: GenServer.call(server, {:send, record, opts})
 
+  @doc """
+  Synchronously sends a record.
+
+  This function will block until the send has been acknowledged by the brokers.
+  """
+  @spec sync_send(GenServer.server(), record, timeout) :: publish_result
   def sync_send(server, record, timeout \\ :timer.seconds(5)) do
     server = GenServer.whereis(server)
 

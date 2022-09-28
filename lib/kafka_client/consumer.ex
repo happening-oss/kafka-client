@@ -135,7 +135,7 @@ defmodule KafkaClient.Consumer do
   end
 
   @doc "Synchronously stops the consumer process."
-  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  @spec stop(GenServer.server(), timeout) :: :ok | {:error, :not_found}
   def stop(server, timeout \\ :infinity) do
     case GenServer.whereis(server) do
       pid when is_pid(pid) -> GenServer.stop(server, :normal, timeout)

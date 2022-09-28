@@ -21,7 +21,7 @@ defmodule KafkaClient.Admin do
   end
 
   @doc "Synchronously stops the admin process."
-  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  @spec stop(GenServer.server(), timeout) :: :ok | {:error, :not_found}
   defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
   @doc "Returns the list of topics."
