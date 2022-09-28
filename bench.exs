@@ -5,8 +5,7 @@ brokers = [{"localhost", 9092}]
 topic = "kafka_client_bench"
 num_partitions = 10
 num_messages = 1_000_000
-message_size = 10_000
-batch_size = div(1_000_000, message_size) |> max(1) |> min(100)
+message_size = 5_000
 message = String.duplicate("a", message_size)
 
 metrics = :atomics.new(4, signed: false)
@@ -38,21 +37,31 @@ IO.puts("recreating topic #{topic}")
 KafkaClient.TestAdmin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
 
 IO.puts("producing messages")
-:ok = :brod.start_client(brokers, :test_client, auto_start_producers: true)
 
-1..num_messages
-|> Enum.map(&rem(&1, num_partitions))
-|> Enum.group_by(& &1, fn _ -> %{key: "key", value: message} end)
-|> Task.async_stream(
-  fn {partition, messages} ->
-    messages
-    |> Enum.chunk_every(batch_size)
-    |> Enum.each(&(:ok = :brod.produce_sync(:test_client, topic, partition, "key", &1)))
-  end,
-  ordered: false,
-  timeout: :infinity
-)
-|> Stream.run()
+KafkaClient.Producer.start_link(servers: ["localhost:9092"], name: :bench_producer)
+
+produced_count = :counters.new(1, [])
+
+{produce_time, _} =
+  :timer.tc(fn ->
+    1..num_messages
+    |> Enum.each(
+      &KafkaClient.Producer.send(
+        :bench_producer,
+        %{topic: topic, partition: rem(&1, num_partitions), key: "key", value: message},
+        on_completion: fn {:ok, _partition, _offset, _timestamp} ->
+          :counters.add(produced_count, 1, 1)
+          if :counters.get(produced_count, 1) == num_messages, do: send(bench_pid, :producer_done)
+        end
+      )
+    )
+
+    receive do
+      :producer_done -> :ok
+    end
+  end)
+
+IO.puts("produce throughput: #{round(num_messages * 1_000_000 / produce_time)} messages/s")
 
 {:ok, consumer_pid} =
   KafkaClient.Consumer.start_link(
