@@ -37,9 +37,19 @@ public class Driver {
       var output = Output.start();
       var worker = Worker.start(port, output, decodedArgs.toArray());
 
-      while (true) {
-        var command = takeCommand(input);
-        worker.sendCommand(command);
+      try {
+        while (true) {
+          var command = takeCommand(input);
+          worker.sendCommand(command);
+        }
+      } catch (EOFException e) {
+        // port owner has terminated
+
+        // try to stop gracefully by asking the worker to stop
+        worker.sendCommand(new Port.Command("stop", new Object[] {}, null));
+
+        // if the worker doesn't stop in 5 seconds, exit
+        Thread.sleep(5000);
       }
     } catch (Exception e) {
       System.err.println(e.getMessage());
