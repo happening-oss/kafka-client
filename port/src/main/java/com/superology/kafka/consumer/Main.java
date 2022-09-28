@@ -271,8 +271,8 @@ public class Main implements Port, ConsumerRebalanceListener {
         new OtpErlangLong(record.offset()),
         new OtpErlangLong(record.timestamp()),
         headers,
-        new OtpErlangBinary(record.key()),
-        new OtpErlangBinary(record.value()));
+        record.key() == null ? Erlang.nil() : new OtpErlangBinary(record.key()),
+        record.value() == null ? Erlang.nil() : new OtpErlangBinary(record.value()));
   }
 
   private Properties mapToProperties(Map<Object, Object> map) {
