@@ -52,6 +52,7 @@ defmodule KafkaClient.Consumer.Stream do
         |> Stream.take_while(&(&1 != :caught_up))
         |> Stream.filter(&match?({:record, record}, &1))
         |> Stream.map(fn {:record, record} -> record end)
+        |> Stream.each(&KafkaClient.Consumer.Poller.ack/1)
       end
   """
   @spec new([Poller.option()]) :: Enumerable.t()
