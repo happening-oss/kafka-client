@@ -20,7 +20,7 @@ defmodule KafkaClient.Producer do
         }
 
   @type publish_result ::
-          {:ok, KafkaClient.partition(), KafkaClient.offset()}
+          {:ok, KafkaClient.partition(), KafkaClient.offset(), KafkaClient.timestamp()}
           | {:error, String.t()}
 
   @doc """

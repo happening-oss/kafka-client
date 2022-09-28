@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutionException;
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.header.Header;
 
+import com.ericsson.otp.erlang.*;
 import com.superology.kafka.port.*;
 
 public class Main implements Port {
@@ -57,13 +58,43 @@ public class Main implements Port {
       });
     }
 
-    producer.send(new ProducerRecord<>(
-        (String) record.get("topic"),
-        (Integer) record.get("partition"),
-        (Long) record.get("timestamp"),
-        (byte[]) record.get("key"),
-        (byte[]) record.get("value"),
-        headers));
+    Callback callback = null;
+    var callbackId = (byte[]) command.args()[1];
+    if (callbackId != null) {
+      callback = new Callback() {
+        public void onCompletion(RecordMetadata metadata, Exception e) {
+          OtpErlangObject payload;
+
+          if (e != null)
+            payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
+          else
+            payload = Erlang.ok(
+                new OtpErlangInt(metadata.partition()),
+                new OtpErlangLong(metadata.offset()),
+                new OtpErlangLong(metadata.timestamp()));
+
+          try {
+            output.emit(
+                Erlang.tuple(
+                    new OtpErlangAtom("on_completion"),
+                    new OtpErlangBinary(callbackId),
+                    payload));
+          } catch (InterruptedException ie) {
+            throw new org.apache.kafka.common.errors.InterruptException(ie);
+          }
+        }
+      };
+    }
+
+    producer.send(
+        new ProducerRecord<>(
+            (String) record.get("topic"),
+            (Integer) record.get("partition"),
+            (Long) record.get("timestamp"),
+            (byte[]) record.get("key"),
+            (byte[]) record.get("value"),
+            headers),
+        callback);
 
     return null;
   }

@@ -73,8 +73,8 @@ defmodule KafkaClient.Test.Helper do
   def sync_produce(topic, opts \\ []) do
     record = record(topic, opts)
 
-    with {:ok, partition, offset} <- Producer.sync_send(:test_producer, record, :infinity),
-         do: {:ok, %{record | partition: partition} |> Map.put(:offset, offset)}
+    with {:ok, partition, offset, ts} <- Producer.sync_send(:test_producer, record, :infinity),
+         do: {:ok, Map.merge(record, %{partition: partition, offset: offset, timestamp: ts})}
   end
 
   def sync_produce!(topic, opts \\ []) do
