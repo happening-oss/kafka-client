@@ -144,9 +144,7 @@ public class Main implements Port {
           });
 
       response = Erlang.ok(map);
-    } catch (
-
-    ExecutionException e) {
+    } catch (ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }
 

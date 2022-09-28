@@ -1,5 +1,6 @@
 defmodule KafkaClient.Producer do
   use KafkaClient.GenPort
+  import Kernel, except: [send: 2]
   alias KafkaClient.GenPort
 
   def start_link(opts) do
@@ -29,14 +30,33 @@ defmodule KafkaClient.Producer do
   @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
   defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
-  def send(server, record),
-    do: GenServer.call(server, {:send, record})
+  def send(server, record, opts \\ []),
+    do: GenServer.call(server, {:send, record, opts})
+
+  def sync_send(server, record, timeout \\ :timer.seconds(5)) do
+    server = GenServer.whereis(server)
+
+    me = self()
+    ref = make_ref()
+
+    callback = &Kernel.send(me, {ref, &1})
+    send(server, record, on_completion: callback)
+
+    mref = Process.monitor(server)
+
+    receive do
+      {^ref, response} -> response
+      {:DOWN, ^mref, :process, ^server, reason} -> exit(reason)
+    after
+      timeout -> exit(:timeout)
+    end
+  end
 
   @impl GenServer
-  def init(_), do: {:ok, nil}
+  def init(_), do: {:ok, %{callbacks: %{}, next_ref: 0}}
 
   @impl GenServer
-  def handle_call({:send, record}, _from, state) do
+  def handle_call({:send, record, opts}, _from, state) do
     transport_record =
       %{key: nil, value: nil, headers: []}
       |> Map.merge(record)
@@ -47,7 +67,23 @@ defmodule KafkaClient.Producer do
         &Enum.map(&1, fn {key, value} -> {key, {:__binary__, value}} end)
       )
 
-    GenPort.command(GenPort.port(), :send, [transport_record])
+    {ref, state} =
+      if callback = Keyword.get(opts, :on_completion) do
+        bin_ref = :erlang.term_to_binary(state.next_ref)
+        callbacks = Map.put(state.callbacks, bin_ref, callback)
+        {{:__binary__, bin_ref}, %{state | next_ref: state.next_ref + 1, callbacks: callbacks}}
+      else
+        {nil, state}
+      end
+
+    GenPort.command(GenPort.port(), :send, [transport_record, ref])
     {:reply, :ok, state}
+  end
+
+  @impl GenPort
+  def handle_port_message({:on_completion, ref, payload}, state) do
+    {callback, callbacks} = Map.pop!(state.callbacks, ref)
+    callback.(payload)
+    {:noreply, %{state | callbacks: callbacks}}
   end
 end

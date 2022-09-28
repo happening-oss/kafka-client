@@ -43,8 +43,12 @@ public class Erlang {
     return new OtpErlangTuple(elements);
   }
 
-  public static OtpErlangTuple ok(OtpErlangObject value) {
-    return tuple(new OtpErlangAtom("ok"), value);
+  public static OtpErlangTuple ok(OtpErlangObject... values) {
+    var args = new OtpErlangObject[values.length + 1];
+    args[0] = new OtpErlangAtom("ok");
+    System.arraycopy(values, 0, args, 1, values.length);
+
+    return tuple(args);
   }
 
   public static OtpErlangTuple error(OtpErlangObject value) {
