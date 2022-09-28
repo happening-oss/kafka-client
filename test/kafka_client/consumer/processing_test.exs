@@ -7,8 +7,8 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
 
-    produced1 = produce(topic, partition: 0)
-    produced2 = produce(topic, partition: 0)
+    produced1 = sync_produce!(topic, partition: 0)
+    produced2 = sync_produce!(topic, partition: 0)
 
     record1 = assert_processing(topic, 0)
     assert record1.offset == produced1.offset
@@ -31,9 +31,9 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     consumer = start_consumer!(num_topics: 2)
     [topic1, topic2] = consumer.subscriptions
 
-    produce(topic1, partition: 0)
-    produce(topic1, partition: 1)
-    produce(topic2, partition: 0)
+    sync_produce!(topic1, partition: 0)
+    sync_produce!(topic1, partition: 1)
+    sync_produce!(topic2, partition: 0)
 
     assert_processing(topic1, 0)
     assert_processing(topic1, 1)
@@ -44,15 +44,15 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
 
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
 
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
 
     last_processed_record_partition_0 = process_next_record!(topic, 0)
 
@@ -82,8 +82,8 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
 
-    produce(topic, partition: 0)
-    produced2 = produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    produced2 = sync_produce!(topic, partition: 0)
 
     record = assert_processing(topic, 0)
 

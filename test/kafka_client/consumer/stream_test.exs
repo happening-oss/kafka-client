@@ -11,12 +11,12 @@ defmodule Consumer.StreamTest do
 
     produced =
       [
-        produce(topic1, partition: 0),
-        produce(topic1, partition: 1),
-        produce(topic1, partition: 1),
-        produce(topic2, partition: 0),
-        produce(topic2, partition: 0),
-        produce(topic2, partition: 0)
+        sync_produce!(topic1, partition: 0),
+        sync_produce!(topic1, partition: 1),
+        sync_produce!(topic1, partition: 1),
+        sync_produce!(topic2, partition: 0),
+        sync_produce!(topic2, partition: 0),
+        sync_produce!(topic2, partition: 0)
       ]
       |> Enum.map(&Map.take(&1, ~w/topic partition offset value/a))
       |> Enum.sort()
@@ -47,9 +47,9 @@ defmodule Consumer.StreamTest do
 
     recreate_topics([topic1])
 
-    produce(topic1, partition: 0)
-    produce(topic1, partition: 0)
-    produce(topic1, partition: 0)
+    sync_produce!(topic1, partition: 0)
+    sync_produce!(topic1, partition: 0)
+    sync_produce!(topic1, partition: 0)
 
     # process only the first element
     Consumer.Stream.new(servers: servers(), subscriptions: [topic1])

@@ -1,5 +1,6 @@
 defmodule KafkaClient.Test.Helper do
   import ExUnit.Assertions
+  alias KafkaClient.Producer
 
   def eventually(fun, opts \\ []),
     do: eventually(fun, Keyword.get(opts, :attempts, 10), Keyword.get(opts, :delay, 100))
@@ -13,7 +14,7 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def initialize_producer! do
-    :ok = :brod.start_client(brokers(), :test_client, auto_start_producers: true)
+    KafkaClient.Producer.start_link(servers: servers(), name: :test_producer)
   end
 
   def start_consumer!(opts \\ []) do
@@ -64,32 +65,42 @@ defmodule KafkaClient.Test.Helper do
   def stop_consumer(consumer), do: ExUnit.Callbacks.stop_supervised(consumer.child_id)
 
   def produce(topic, opts \\ []) do
+    record = record(topic, opts)
+    Producer.send(:test_producer, record)
+    record
+  end
+
+  def sync_produce(topic, opts \\ []) do
+    record = record(topic, opts)
+
+    with {:ok, partition, offset} <- Producer.sync_send(:test_producer, record, :infinity),
+         do: {:ok, %{record | partition: partition} |> Map.put(:offset, offset)}
+  end
+
+  def sync_produce!(topic, opts \\ []) do
+    {:ok, result} = sync_produce(topic, opts)
+    result
+  end
+
+  defp record(topic, opts) do
     headers = for _ <- 1..5, do: {unique("header_key"), :crypto.strong_rand_bytes(4)}
-    key = Keyword.get(opts, :key, unique("key"))
-
-    default_opts = %{
-      partition: 0,
-      headers: headers,
-      key: key,
-      value: :crypto.strong_rand_bytes(4)
-    }
-
-    opts = Map.merge(default_opts, Map.new(opts))
+    key = Keyword.get(opts, :key, :crypto.strong_rand_bytes(4))
+    value = Keyword.get(opts, :value, :crypto.strong_rand_bytes(4))
 
     timestamp =
       DateTime.to_unix(~U[2022-01-01 00:00:00.00Z], :nanosecond) +
         System.unique_integer([:positive, :monotonic])
 
-    {:ok, offset} =
-      :brod.produce_sync_offset(
-        :test_client,
-        topic,
-        opts.partition,
-        opts.key,
-        opts |> Map.take(~w/headers value/a) |> Map.put(:ts, timestamp)
-      )
+    partition = Keyword.get(opts, :partition, 0)
 
-    Map.merge(opts, %{topic: topic, offset: offset, timestamp: timestamp})
+    %{
+      topic: topic,
+      key: key,
+      value: value,
+      timestamp: timestamp,
+      partition: partition,
+      headers: headers
+    }
   end
 
   def resume_processing(record) do

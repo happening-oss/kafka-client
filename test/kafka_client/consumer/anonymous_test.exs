@@ -8,9 +8,9 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     [topic1, topic2] = subscriptions
 
-    produced1 = produce(topic1, partition: 0)
-    produced2 = produce(topic1, partition: 1)
-    produced3 = produce(topic2, partition: 0)
+    produced1 = sync_produce!(topic1, partition: 0)
+    produced2 = sync_produce!(topic1, partition: 1)
+    produced3 = sync_produce!(topic2, partition: 0)
 
     assert assert_processing(topic1, 0).offset == produced1.offset
     assert assert_processing(topic1, 0).offset == produced1.offset
@@ -41,16 +41,16 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     [topic1, topic2] = consumer1.subscriptions
 
     produced = [
-      produce(topic1, partition: 0),
-      produce(topic1, partition: 0),
-      produce(topic1, partition: 0),
+      sync_produce!(topic1, partition: 0),
+      sync_produce!(topic1, partition: 0),
+      sync_produce!(topic1, partition: 0),
 
       #
-      produce(topic1, partition: 1),
-      produce(topic1, partition: 1),
+      sync_produce!(topic1, partition: 1),
+      sync_produce!(topic1, partition: 1),
 
       #
-      produce(topic2, partition: 0)
+      sync_produce!(topic2, partition: 0)
     ]
 
     # check that caught-up is sent only once
@@ -76,9 +76,9 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     # produce more messages after the consumer is connected
     produced_after_connect = [
-      produce(topic1, partition: 0),
-      produce(topic1, partition: 1),
-      produce(topic2, partition: 0)
+      sync_produce!(topic1, partition: 0),
+      sync_produce!(topic1, partition: 1),
+      sync_produce!(topic2, partition: 0)
     ]
 
     # wait until all the records are polled
@@ -109,7 +109,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     for topic <- [topic1, topic2, topic3],
         partition <- 0..1,
-        do: produce(topic, partition: partition)
+        do: sync_produce!(topic, partition: partition)
 
     assert_processing(topic1, 0)
     assert_processing(topic1, 1)
@@ -124,9 +124,9 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     recreate_topics([topic])
 
-    produce(topic, partition: 0)
-    record2 = produce(topic, partition: 0)
-    produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    record2 = sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
 
     start_consumer!(
       group_id: nil,
@@ -143,9 +143,9 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     recreate_topics([topic])
 
-    produce(topic, partition: 0)
-    record2 = produce(topic, partition: 0)
-    produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    record2 = sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
 
     start_consumer!(
       group_id: nil,
