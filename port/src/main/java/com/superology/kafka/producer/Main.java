@@ -4,6 +4,8 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.header.Header;
+
 import com.superology.kafka.port.*;
 
 public class Main implements Port {
@@ -41,12 +43,27 @@ public class Main implements Port {
     @SuppressWarnings("unchecked")
     var record = (Map<String, Object>) command.args()[0];
 
+    var headers = new LinkedList<Header>();
+    for (@SuppressWarnings("unchecked")
+    var header : (Collection<Object[]>) record.get("headers")) {
+      headers.add(new Header() {
+        public String key() {
+          return (String) header[0];
+        }
+
+        public byte[] value() {
+          return (byte[]) header[1];
+        }
+      });
+    }
+
     producer.send(new ProducerRecord<>(
         (String) record.get("topic"),
         (Integer) record.get("partition"),
         (Long) record.get("timestamp"),
         (byte[]) record.get("key"),
-        (byte[]) record.get("value")));
+        (byte[]) record.get("value"),
+        headers));
 
     return null;
   }

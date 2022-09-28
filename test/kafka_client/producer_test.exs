@@ -24,7 +24,7 @@ defmodule KafkaClient.ProducerTest do
     start_consumer!(group_id: nil, subscriptions: [topic], recreate_topics?: false)
     consumed = assert_processing(topic, produced.partition)
 
-    keys = ~w/key value timestamp/a
+    keys = ~w/key value timestamp headers/a
     assert Map.take(produced, keys) == Map.take(consumed, keys)
   end
 

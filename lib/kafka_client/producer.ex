@@ -38,10 +38,14 @@ defmodule KafkaClient.Producer do
   @impl GenServer
   def handle_call({:send, record}, _from, state) do
     transport_record =
-      %{key: nil, value: nil}
+      %{key: nil, value: nil, headers: []}
       |> Map.merge(record)
       |> Map.update!(:key, &{:__binary__, &1})
       |> Map.update!(:value, &{:__binary__, &1})
+      |> Map.update!(
+        :headers,
+        &Enum.map(&1, fn {key, value} -> {key, {:__binary__, value}} end)
+      )
 
     GenPort.command(GenPort.port(), :send, [transport_record])
     {:reply, :ok, state}
