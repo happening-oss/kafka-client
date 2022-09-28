@@ -35,6 +35,10 @@ public class Erlang {
     }
   }
 
+  public static OtpErlangAtom nil() {
+    return new OtpErlangAtom("nil");
+  }
+
   public static OtpErlangTuple tuple(OtpErlangObject... elements) {
     return new OtpErlangTuple(elements);
   }
@@ -74,6 +78,7 @@ public class Erlang {
    * Decodes an Erlang term format (produced via `:erlang.term_to_binary`) into
    * a hierarchy of Java objects, with the following rules:
    *
+   * - {:__binary__, binary} pair is decoded as byte[]
    * - integer number is decoded as an integer or a long, depending on its value
    * - true/false atoms are decoded as a boolean
    * - nil atom is decoded as null
@@ -91,20 +96,32 @@ public class Erlang {
 
   private static Object fromErlang(OtpErlangObject value) throws Exception {
     if (value instanceof OtpErlangList)
-      return Erlang.fromErlangList((OtpErlangList) value);
-    else if (value instanceof OtpErlangTuple)
-      return Erlang.fromErlangList(Arrays.asList(((OtpErlangTuple) value).elements())).toArray();
-    else if (value instanceof OtpErlangMap)
-      return Erlang.fromErlangMap((OtpErlangMap) value);
-    else if (value instanceof OtpErlangBinary)
+      return fromErlangList((OtpErlangList) value);
+
+    if (value instanceof OtpErlangTuple) {
+      var tuple = (OtpErlangTuple) value;
+
+      if (tuple.elementAt(0).equals(new OtpErlangAtom("__binary__")))
+        return tuple.elementAt(1).equals(nil()) ? null : ((OtpErlangBinary) tuple.elementAt(1)).binaryValue();
+
+      return fromErlangList(Arrays.asList(tuple.elements())).toArray();
+    }
+
+    if (value instanceof OtpErlangMap)
+      return fromErlangMap((OtpErlangMap) value);
+
+    if (value instanceof OtpErlangBinary)
       return new String(((OtpErlangBinary) value).binaryValue());
-    else if (value instanceof OtpErlangLong) {
+
+    if (value instanceof OtpErlangLong) {
       var number = ((OtpErlangLong) value).longValue();
       if (number >= Integer.MIN_VALUE && number <= Integer.MAX_VALUE)
         return (int) number;
       else
         return number;
-    } else if (value instanceof OtpErlangAtom) {
+    }
+
+    if (value instanceof OtpErlangAtom) {
       var atomValue = ((OtpErlangAtom) value).atomValue();
       switch (atomValue) {
         case "true":
