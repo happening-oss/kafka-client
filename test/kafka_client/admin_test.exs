@@ -5,7 +5,14 @@ defmodule KafkaClient.AdminTest do
   alias KafkaClient.Admin
 
   setup do
-    {:ok, admin: start_supervised!({Admin, servers: ["localhost:9092"]}, id: make_ref())}
+    admin =
+      start_supervised!(
+        {Admin, servers: servers()},
+        id: make_ref(),
+        restart: :temporary
+      )
+
+    {:ok, admin: admin}
   end
 
   test "list_topics", ctx do
