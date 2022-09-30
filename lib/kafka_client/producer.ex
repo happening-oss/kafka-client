@@ -4,6 +4,30 @@ defmodule KafkaClient.Producer do
 
   This module wraps the functions from the [Java Producer interface]
   (https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/KafkaProducer.html).
+
+  ## Basic usage
+
+  Start the producer in the supervision tree. Typically it suffices to have one, globally registered producer:
+
+      children = [
+        {KafkaClient.Producer, servers: ["localhost:9092"], name: :my_producer},
+        ...
+      ]
+      Supervisor.start_children(children, ...)
+
+      # fire-and-forget send
+      record = %{topic: "some_topic", key: "key", value: "value"}
+      KafkaClient.Producer.send(:my_producer, record)
+
+      # sending with an ack callback
+      KafkaClient.Producer.send(
+        :my_producer,
+        record,
+        on_completion: fn
+          {:ok, partition, offset, timestamp} -> ...
+          {:error, reason} -> ...
+        end
+      )
   """
 
   use KafkaClient.GenPort
@@ -62,7 +86,7 @@ defmodule KafkaClient.Producer do
   defdelegate stop(server, timeout \\ :infinity), to: GenPort
 
   @doc """
-  Asynhronously sends a record.
+  Asynhronously sends a record to the producer.
 
   This function returns true as soon as the record has been enqueued in internal producer's state.
   The record will be sent sometime in the future, depending on the producer settings (see
@@ -70,7 +94,12 @@ defmodule KafkaClient.Producer do
   for details).
 
   If the callback function is provided, it will be invoked after the send has been acknowledged by
-  the brokers.
+  the brokers, according to the `"acks"` producer configuration
+  (https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html#producerconfigs_acks).
+
+  The callback function is invoked inside the producer process. Therefore make sure to keep the
+  function short and crash-free. Typically it's best to send the result to another process, or
+  store it in an ETS table, and finish quickly.
 
   If partition and/or timestamp values are not provided, they will be generated, as described in
   https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/ProducerRecord.html.
