@@ -109,28 +109,91 @@ defmodule KafkaClient.Producer do
     do: GenServer.call(server, {:send, record, opts})
 
   @doc """
-  Synchronously sends a record.
+  Synchronously produces multiple records.
 
-  This function will block until the send has been acknowledged by the brokers.
+  This function sends all the records to the broker. The result is a stream of returned ack
+  messages where each element is in the form of `{:ok, record} | {:error, record, reason}`.
+
+  If the record is successfully published, the `record` field in the result is the input map
+  enriched with the server-returned meta: offset, timestamp, partition.
+
+  This function will perform poorly for a larger number of input records, because the mailbox of
+  the caller process will be flooded. In such cases it's better to use `send/3`, and send the ack
+  results to another process (not the caller).
   """
-  @spec sync_send(GenServer.server(), record, timeout) :: publish_result
-  def sync_send(server, record, timeout \\ :timer.seconds(5)) do
+  @spec sync_send(GenServer.server(), Enumerable.t(), timeout) :: Enumerable.t()
+  def sync_send(server, records, timeout \\ :timer.seconds(5)) do
     server = GenServer.whereis(server)
 
-    me = self()
-    ref = make_ref()
+    caller = self()
+    batch_ref = make_ref()
 
-    callback = &Kernel.send(me, {ref, &1})
-    send(server, record, on_completion: callback)
+    sent_records =
+      Map.new(
+        records,
+        fn record ->
+          record_ref = make_ref()
+          send(server, record, on_completion: &Kernel.send(caller, {batch_ref, record_ref, &1}))
+          {record_ref, record}
+        end
+      )
 
-    mref = Process.monitor(server)
+    Stream.resource(
+      fn ->
+        {
+          sent_records,
+          Process.monitor(server),
+          if(timeout != :infinity, do: Process.send_after(self(), {batch_ref, :timeout}, timeout))
+        }
+      end,
+      fn {sent_records, mref, timer} ->
+        if map_size(sent_records) == 0 do
+          {:halt, {%{}, mref, timer}}
+        else
+          receive do
+            {^batch_ref, :timeout} ->
+              exit(:timeout)
 
-    receive do
-      {^ref, response} -> response
-      {:DOWN, ^mref, :process, ^server, reason} -> exit(reason)
-    after
-      timeout -> exit(:timeout)
-    end
+            {:DOWN, ^mref, :process, ^server, reason} ->
+              exit(reason)
+
+            {^batch_ref, record_ref, response} ->
+              {record, sent_records} = Map.pop!(sent_records, record_ref)
+
+              emitted_element =
+                case response do
+                  {:ok, partition, offset, timestamp} ->
+                    # if "acks" is set to 0, partition will be -1, so we convert it to `nil` in this case
+                    partition = with -1 <- partition, do: nil
+
+                    {:ok,
+                     Map.merge(
+                       record,
+                       %{partition: partition, offset: offset, timestamp: timestamp}
+                     )}
+
+                  {:error, reason} ->
+                    {:error, record, reason}
+                end
+
+              {[emitted_element], {sent_records, mref, timer}}
+          end
+        end
+      end,
+      fn {_sent_records, mref, timer} ->
+        Process.demonitor(mref, [:flush])
+
+        if timer != nil do
+          Process.cancel_timer(timer)
+
+          receive do
+            {^batch_ref, :timeout} -> :ok
+          after
+            0 -> nil
+          end
+        end
+      end
+    )
   end
 
   @impl GenServer

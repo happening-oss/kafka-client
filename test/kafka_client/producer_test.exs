@@ -13,14 +13,21 @@ defmodule KafkaClient.ProducerTest do
     assert Map.take(produced, keys) == Map.take(consumed, keys)
   end
 
-  test "sync_produce" do
+  test "sync_send" do
     [topic] = start_consumer!().subscriptions
 
-    assert {:ok, produced} = sync_produce(topic, partition: nil, timestamp: nil)
+    produced = [
+      %{topic: topic, key: "key 1", value: "value 1"},
+      %{topic: topic, key: "key 2", value: "value 2"}
+    ]
 
-    consumed = assert_processing(topic, produced.partition)
-    keys = ~w/key value timestamp headers offset/a
-    assert Map.take(produced, keys) == Map.take(consumed, keys)
+    assert [ok: record1, ok: record2] =
+             Producer.sync_send(:test_producer, produced) |> Enum.to_list()
+
+    keys = ~w/topic key value/a
+    expected = produced |> Enum.map(&Map.take(&1, keys)) |> Enum.sort()
+    consumed = [record1, record2] |> Enum.map(&Map.take(&1, keys)) |> Enum.sort()
+    assert consumed == expected
   end
 
   test "stop" do

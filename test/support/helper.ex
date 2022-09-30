@@ -13,9 +13,8 @@ defmodule KafkaClient.Test.Helper do
     :"#{unique(prefix)}"
   end
 
-  def initialize_producer! do
-    KafkaClient.Producer.start_link(servers: servers(), name: :test_producer)
-  end
+  def initialize_producer!,
+    do: KafkaClient.Producer.start_link(servers: servers(), name: :test_producer)
 
   def start_consumer!(opts \\ []) do
     group_id = Keyword.get(opts, :group_id, unique("test_group"))
@@ -73,8 +72,8 @@ defmodule KafkaClient.Test.Helper do
   def sync_produce(topic, opts \\ []) do
     record = record(topic, opts)
 
-    with {:ok, partition, offset, ts} <- Producer.sync_send(:test_producer, record, :infinity),
-         do: {:ok, Map.merge(record, %{partition: partition, offset: offset, timestamp: ts})}
+    [result] = Producer.sync_send(:test_producer, [record], :infinity) |> Enum.to_list()
+    result
   end
 
   def sync_produce!(topic, opts \\ []) do
