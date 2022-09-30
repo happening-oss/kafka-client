@@ -5,7 +5,14 @@ defmodule KafkaClient.AdminTest do
   alias KafkaClient.Admin
 
   setup do
-    {:ok, admin: start_supervised!({Admin, servers: ["localhost:9092"]}, id: make_ref())}
+    admin =
+      start_supervised!(
+        {Admin, servers: servers()},
+        id: make_ref(),
+        restart: :temporary
+      )
+
+    {:ok, admin: admin}
   end
 
   test "list_topics", ctx do
@@ -35,10 +42,10 @@ defmodule KafkaClient.AdminTest do
     topic2 = new_test_topic()
     recreate_topics([topic1, topic2])
 
-    offset_topic1_partition0 = produce(topic1, partition: 0).offset
+    offset_topic1_partition0 = sync_produce!(topic1, partition: 0).offset
 
-    produce(topic1, partition: 1)
-    offset_topic1_partition1 = produce(topic1, partition: 1).offset
+    sync_produce!(topic1, partition: 1)
+    offset_topic1_partition1 = sync_produce!(topic1, partition: 1).offset
 
     topic_partitions = [{topic1, 0}, {topic1, 1}, {topic2, 0}]
     assert {:ok, mapping} = Admin.list_end_offsets(ctx.admin, topic_partitions)
@@ -54,9 +61,9 @@ defmodule KafkaClient.AdminTest do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
 
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
     last_processed_offset_partition_0 = process_next_record!(topic, 0).offset
 
     stop_supervised!(consumer.child_id)

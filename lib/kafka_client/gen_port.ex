@@ -50,7 +50,7 @@ defmodule KafkaClient.GenPort do
     )
   end
 
-  @spec stop(GenServer.server(), pos_integer | :infinity) :: :ok | {:error, :not_found}
+  @spec stop(GenServer.server(), timeout) :: :ok | {:error, :not_found}
   def stop(server, timeout \\ :infinity) do
     case GenServer.whereis(server) do
       pid when is_pid(pid) -> GenServer.stop(server, :normal, timeout)
@@ -67,7 +67,7 @@ defmodule KafkaClient.GenPort do
   @spec port :: port | nil
   def port, do: Process.get({__MODULE__, :port})
 
-  @spec call(GenServer.server(), atom, [term], pos_integer | :infinity) :: term
+  @spec call(GenServer.server(), atom, [term], timeout) :: term
   def call(server, name, args \\ [], timeout \\ :timer.seconds(5)) do
     server
     |> GenServer.whereis()

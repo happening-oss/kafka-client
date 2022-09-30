@@ -9,13 +9,13 @@ defmodule KafkaClient.Consumer.FlowTest do
     [topic] = consumer.subscriptions
 
     # produce some messages on paritions 0 and 1
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
-    partition0_record3 = produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    partition0_record3 = sync_produce!(topic, partition: 0)
 
-    partition1_record1 = produce(topic, partition: 1)
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
+    partition1_record1 = sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
 
     process_next_record!(topic, 0)
     partition0_processing_during_shutdown = assert_processing(topic, 0)
@@ -75,13 +75,13 @@ defmodule KafkaClient.Consumer.FlowTest do
     [topic] = consumer1.subscriptions
 
     # push some messages on both partitions
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
 
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
-    produce(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
 
     # process one record on each partition
     process_next_record!(topic, 0)
@@ -131,8 +131,8 @@ defmodule KafkaClient.Consumer.FlowTest do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
 
-    produce(topic, partition: 0)
-    produce(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
 
     record = assert_processing(topic, 0)
 

@@ -7,20 +7,20 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     [topic1, topic2] = consumer.subscriptions
 
     %{offset: last_buffered_offset} =
-      Stream.repeatedly(fn -> produce(topic1, partition: 0) end)
+      Stream.repeatedly(fn -> sync_produce!(topic1, partition: 0) end)
       |> Stream.take(1000)
       |> Enum.at(-1)
 
     assert_polled(topic1, 0, last_buffered_offset)
 
-    %{offset: first_paused_offset} = produce(topic1, partition: 0)
+    %{offset: first_paused_offset} = sync_produce!(topic1, partition: 0)
     refute_polled(topic1, 0, first_paused_offset)
 
     # check that records on other topic-partitions are still consumed
-    produce(topic1, partition: 1)
+    sync_produce!(topic1, partition: 1)
     assert_processing(topic1, 1)
 
-    produce(topic2, partition: 0)
+    sync_produce!(topic2, partition: 0)
     assert_processing(topic2, 0)
 
     # check that buffer is not unpaused immediately
@@ -39,20 +39,20 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     value = <<0::200_000-unit(8)>>
 
     %{offset: last_buffered_offset} =
-      Stream.repeatedly(fn -> produce(topic1, partition: 0, value: value) end)
+      Stream.repeatedly(fn -> sync_produce!(topic1, partition: 0, value: value) end)
       |> Stream.take(5)
       |> Enum.at(-1)
 
     assert_polled(topic1, 0, last_buffered_offset)
 
-    %{offset: first_paused_offset} = produce(topic1, partition: 0)
+    %{offset: first_paused_offset} = sync_produce!(topic1, partition: 0)
     refute_polled(topic1, 0, first_paused_offset)
 
     # check that records on other topic-partitions are still consumed
-    produce(topic1, partition: 1)
+    sync_produce!(topic1, partition: 1)
     assert_processing(topic1, 1)
 
-    produce(topic2, partition: 0)
+    sync_produce!(topic2, partition: 0)
     assert_processing(topic2, 0)
 
     # check that buffer is not unpaused immediately
@@ -70,10 +70,10 @@ defmodule KafkaClient.Consumer.BackpressureTest do
 
     value = <<0::1_000_000-unit(8)>>
 
-    %{offset: offset1} = produce(topic, partition: 0, value: value)
+    %{offset: offset1} = sync_produce!(topic, partition: 0, value: value)
     assert_polled(topic, 0, offset1)
 
-    %{offset: offset2} = produce(topic, partition: 0, value: value)
+    %{offset: offset2} = sync_produce!(topic, partition: 0, value: value)
     assert_polled(topic, 0, offset2)
   end
 end

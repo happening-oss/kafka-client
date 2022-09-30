@@ -133,12 +133,8 @@ public class Main implements Port {
               .partitionsToOffsetAndMetadata()
               .get(),
           entry -> {
-            OtpErlangObject offset;
-
-            if (entry.getValue() == null)
-              offset = new OtpErlangAtom("nil");
-            else
-              offset = new OtpErlangLong(entry.getValue().offset());
+            var value = entry.getValue();
+            OtpErlangObject offset = value == null ? Erlang.nil() : new OtpErlangLong(value.offset());
 
             return Erlang.mapEntry(
                 Erlang.tuple(
@@ -148,9 +144,7 @@ public class Main implements Port {
           });
 
       response = Erlang.ok(map);
-    } catch (
-
-    ExecutionException e) {
+    } catch (ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }
 

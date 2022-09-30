@@ -15,6 +15,22 @@
 
 ## Examples
 
+### Producing
+
+```elixir
+KafkaClient.Producer.start_link(servers: ["localhost:9092"], name: :my_producer)
+
+# fire-and-forget
+KafkaClient.Producer.send(
+  :my_producer,
+  %{topic: "some_topic", key: "key", value: "value"}
+)
+
+# sync multi-produce
+KafkaClient.Producer.sync_send(:my_producer, [record1, record2, ...])
+|> Enum.each(&IO.inspect/1)
+```
+
 ### Concurrent consuming
 
 ```elixir
