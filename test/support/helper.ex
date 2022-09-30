@@ -81,27 +81,6 @@ defmodule KafkaClient.Test.Helper do
     result
   end
 
-  defp record(topic, opts) do
-    headers = for _ <- 1..5, do: {unique("header_key"), :crypto.strong_rand_bytes(4)}
-    key = Keyword.get(opts, :key, :crypto.strong_rand_bytes(4))
-    value = Keyword.get(opts, :value, :crypto.strong_rand_bytes(4))
-
-    timestamp =
-      DateTime.to_unix(~U[2022-01-01 00:00:00.00Z], :nanosecond) +
-        System.unique_integer([:positive, :monotonic])
-
-    partition = Keyword.get(opts, :partition, 0)
-
-    %{
-      topic: topic,
-      key: key,
-      value: value,
-      timestamp: timestamp,
-      partition: partition,
-      headers: headers
-    }
-  end
-
   def resume_processing(record) do
     send(record.pid, :consume)
     %{topic: topic, partition: partition, offset: offset} = record
@@ -174,6 +153,27 @@ defmodule KafkaClient.Test.Helper do
       timeout: :timer.seconds(10)
     )
     |> Stream.run()
+  end
+
+  defp record(topic, opts) do
+    headers = for _ <- 1..5, do: {unique("header_key"), :crypto.strong_rand_bytes(4)}
+    key = Keyword.get(opts, :key, :crypto.strong_rand_bytes(4))
+    value = Keyword.get(opts, :value, :crypto.strong_rand_bytes(4))
+
+    timestamp =
+      DateTime.to_unix(~U[2022-01-01 00:00:00.00Z], :nanosecond) +
+        System.unique_integer([:positive, :monotonic])
+
+    partition = Keyword.get(opts, :partition, 0)
+
+    %{
+      topic: topic,
+      key: key,
+      value: value,
+      timestamp: timestamp,
+      partition: partition,
+      headers: headers
+    }
   end
 
   defp subscriptions(opts) do
