@@ -22,7 +22,8 @@ public class Main implements Port {
       Map.entry("list_topics", this::listTopics),
       Map.entry("list_end_offsets", this::listEndOffsets),
       Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets),
-      Map.entry("create_topics", this::createTopics));
+      Map.entry("create_topics", this::createTopics),
+      Map.entry("delete_topics", this::deleteTopics));
 
   @Override
   public int run(Worker worker, Output output, Object[] args) throws Exception {
@@ -168,7 +169,21 @@ public class Main implements Port {
 
     try {
       admin.createTopics(newTopics).all().get();
-      output.emitCallResponse(command, new OtpErlangAtom("ok"));
+      output.emitCallResponse(command, Erlang.ok());
+    } catch (ExecutionException e) {
+      output.emitCallResponse(command, Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes())));
+    }
+
+    return null;
+  }
+
+  private Integer deleteTopics(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+    try {
+      @SuppressWarnings("unchecked")
+      var topics = (Collection<String>) command.args()[0];
+      admin.deleteTopics(topics).all().get();
+      output.emitCallResponse(command, Erlang.ok());
     } catch (ExecutionException e) {
       output.emitCallResponse(command, Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes())));
     }

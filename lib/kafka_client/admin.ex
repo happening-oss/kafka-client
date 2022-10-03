@@ -75,6 +75,11 @@ defmodule KafkaClient.Admin do
     )
   end
 
+  @doc "Deletes the given topics."
+  @spec delete_topics(GenServer.server(), [KafkaClient.topic()]) :: :ok | {:error, String.t()}
+  def delete_topics(server, topics),
+    do: GenPort.call(server, :delete_topics, [topics])
+
   @impl GenServer
   def init(_), do: {:ok, nil}
 end

@@ -25,7 +25,7 @@ defmodule KafkaClient.Test.Helper do
     # has been forcefully terminated (e.g. via ctrl+c)
     all_topics = KafkaClient.Admin.list_topics(:test_admin)
     test_topics = Enum.filter(all_topics, &String.starts_with?(&1, "kafka_client_test_"))
-    if test_topics != [], do: :brod.delete_topics(brokers(), test_topics, :timer.seconds(5))
+    if test_topics != [], do: Admin.delete_topics(:test_admin, test_topics)
   end
 
   def start_consumer!(opts \\ []) do
@@ -170,10 +170,8 @@ defmodule KafkaClient.Test.Helper do
   def recreate_topics(topics) do
     topics = Enum.map(topics, &with(name when is_binary(name) <- &1, do: {&1, 2}))
     :ok = Admin.create_topics(:test_admin, topics)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      :brod.delete_topics(brokers(), Enum.map(topics, &elem(&1, 0)), :timer.seconds(5))
-    end)
+    topic_names = Enum.map(topics, &elem(&1, 0))
+    ExUnit.Callbacks.on_exit(fn -> Admin.delete_topics(:test_admin, topic_names) end)
   end
 
   defp record(topic, opts) do
