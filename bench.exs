@@ -34,7 +34,13 @@ transfers = :ets.new(:transfers, [:public, write_concurrency: true])
 )
 
 IO.puts("recreating topic #{topic}")
-KafkaClient.TestAdmin.recreate_topic([{"localhost", 9092}], topic, num_partitions: num_partitions)
+
+KafkaClient.Admin.start_link(servers: ["localhost:9092"], name: :bench_admin)
+:brod.delete_topics(brokers, [topic], :timer.seconds(5))
+Process.sleep(:timer.seconds(1))
+
+KafkaClient.Admin.create_topics(:bench_admin, [{topic, num_partitions}])
+Process.sleep(:timer.seconds(2))
 
 IO.puts("producing messages")
 
@@ -129,3 +135,6 @@ java -> elixir transfer time: #{transfer_times}
 """)
 
 KafkaClient.Consumer.stop(consumer_pid)
+
+:brod.delete_topics(brokers, [topic], :timer.seconds(5))
+KafkaClient.Admin.stop(:bench_admin)

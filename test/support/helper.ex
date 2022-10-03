@@ -1,6 +1,6 @@
 defmodule KafkaClient.Test.Helper do
   import ExUnit.Assertions
-  alias KafkaClient.Producer
+  alias KafkaClient.{Admin, Producer}
 
   def eventually(fun, opts \\ []),
     do: eventually(fun, Keyword.get(opts, :attempts, 10), Keyword.get(opts, :delay, 100))
@@ -13,8 +13,20 @@ defmodule KafkaClient.Test.Helper do
     :"#{unique(prefix)}"
   end
 
-  def initialize_producer!,
-    do: KafkaClient.Producer.start_link(servers: servers(), name: :test_producer)
+  def initialize! do
+    Producer.start_link(
+      servers: servers(),
+      name: :test_producer
+    )
+
+    Admin.start_link(servers: KafkaClient.Test.Helper.servers(), name: :test_admin)
+
+    # delete test topics from a previous `mix test` session, which can occur if the test OS process
+    # has been forcefully terminated (e.g. via ctrl+c)
+    all_topics = KafkaClient.Admin.list_topics(:test_admin)
+    test_topics = Enum.filter(all_topics, &String.starts_with?(&1, "kafka_client_test_"))
+    if test_topics != [], do: :brod.delete_topics(brokers(), test_topics, :timer.seconds(5))
+  end
 
   def start_consumer!(opts \\ []) do
     group_id = Keyword.get(opts, :group_id, unique("test_group"))
@@ -140,19 +152,28 @@ defmodule KafkaClient.Test.Helper do
 
   def servers, do: Enum.map(brokers(), fn {host, port} -> "#{host}:#{port}" end)
 
-  def new_test_topic, do: unique("kafka_client_test_topic")
+  def new_test_topic do
+    # The approach below has been chosen over `System.to_integer` to reduce the chance of a name
+    # collision between two `mix test` session, which eliminates some weird race conditions if a
+    # topic is deleted and then immediately recreated.
+    [
+      "kafka_client_test_topic",
+      # current time reduces the chance of a name collision between two `mix test` sessions
+      DateTime.utc_now() |> DateTime.to_unix(:microsecond) |> to_string(),
+
+      # randomness reduces the change of a name collision in a single `mix test` session
+      :crypto.strong_rand_bytes(4) |> Base.url_encode64(padding: false)
+    ]
+    |> Enum.join("_")
+  end
 
   def recreate_topics(topics) do
-    topics
-    |> Enum.map(&with string when is_binary(string) <- &1, do: {string, []})
-    |> Task.async_stream(
-      fn {topic, opts} ->
-        opts = Keyword.merge([num_partitions: 2], opts)
-        KafkaClient.TestAdmin.recreate_topic(brokers(), topic, opts)
-      end,
-      timeout: :timer.seconds(10)
-    )
-    |> Stream.run()
+    topics = Enum.map(topics, &with(name when is_binary(name) <- &1, do: {&1, 2}))
+    :ok = Admin.create_topics(:test_admin, topics)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      :brod.delete_topics(brokers(), Enum.map(topics, &elem(&1, 0)), :timer.seconds(5))
+    end)
   end
 
   defp record(topic, opts) do
@@ -191,7 +212,9 @@ defmodule KafkaClient.Test.Helper do
 
     if Keyword.get(opts, :recreate_topics?, true) do
       subscriptions
-      |> Enum.map(&with {topic, _partition} <- &1, do: topic)
+      |> Enum.map(
+        &{with({topic, _partition} <- &1, do: topic), Keyword.get(opts, :num_topics, 2)}
+      )
       |> recreate_topics()
     end
 

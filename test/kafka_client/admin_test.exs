@@ -28,7 +28,7 @@ defmodule KafkaClient.AdminTest do
     topic1 = new_test_topic()
     topic2 = new_test_topic()
 
-    recreate_topics([{topic1, num_partitions: 1}, {topic2, num_partitions: 2}])
+    recreate_topics([{topic1, 1}, {topic2, 2}])
 
     assert {:ok, topics} = Admin.describe_topics(ctx.admin, [topic1, topic2])
     assert topics == %{topic1 => [0], topic2 => [0, 1]}

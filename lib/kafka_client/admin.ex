@@ -63,6 +63,18 @@ defmodule KafkaClient.Admin do
   def list_consumer_group_offsets(server, group_id, topic_partitions),
     do: GenPort.call(server, :list_consumer_group_offsets, [group_id, topic_partitions])
 
+  @doc "Creates the new topics."
+  @spec create_topics(GenServer.server(), [
+          KafkaClient.topic() | {KafkaClient.topic(), num_partitions :: pos_integer}
+        ]) :: :ok | {:error, String.t()}
+  def create_topics(server, topics) do
+    GenPort.call(
+      server,
+      :create_topics,
+      [Enum.map(topics, &with(name when is_binary(name) <- &1, do: {&1, nil}))]
+    )
+  end
+
   @impl GenServer
   def init(_), do: {:ok, nil}
 end
