@@ -67,7 +67,7 @@ defmodule KafkaClient.Test.Helper do
 
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
 
-    unless Keyword.get(opts, :await_assigned?, true),
+    if Keyword.get(opts, :await_assigned?, true),
       do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
 
     %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions, group_id: group_id}
