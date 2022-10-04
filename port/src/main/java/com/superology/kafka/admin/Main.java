@@ -21,7 +21,9 @@ public class Main implements Port {
       Map.entry("describe_topics", this::describeTopics),
       Map.entry("list_topics", this::listTopics),
       Map.entry("list_end_offsets", this::listEndOffsets),
-      Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets));
+      Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets),
+      Map.entry("create_topics", this::createTopics),
+      Map.entry("delete_topics", this::deleteTopics));
 
   @Override
   public int run(Worker worker, Output output, Object[] args) throws Exception {
@@ -149,6 +151,42 @@ public class Main implements Port {
     }
 
     output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer createTopics(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+    var newTopics = new LinkedList<NewTopic>();
+
+    for (@SuppressWarnings("unchecked")
+    var newTopicTuple : ((Iterable<Object[]>) command.args()[0])) {
+      newTopics.add(new NewTopic(
+          (String) newTopicTuple[0],
+          Optional.ofNullable((Integer) newTopicTuple[1]),
+          Optional.empty()));
+    }
+
+    try {
+      admin.createTopics(newTopics).all().get();
+      output.emitCallResponse(command, Erlang.ok());
+    } catch (ExecutionException e) {
+      output.emitCallResponse(command, Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes())));
+    }
+
+    return null;
+  }
+
+  private Integer deleteTopics(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+    try {
+      @SuppressWarnings("unchecked")
+      var topics = (Collection<String>) command.args()[0];
+      admin.deleteTopics(topics).all().get();
+      output.emitCallResponse(command, Erlang.ok());
+    } catch (ExecutionException e) {
+      output.emitCallResponse(command, Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes())));
+    }
 
     return null;
   }

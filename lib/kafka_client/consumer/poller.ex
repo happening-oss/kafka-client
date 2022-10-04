@@ -175,11 +175,7 @@ defmodule KafkaClient.Consumer.Poller do
     }
 
     consumer_params =
-      %{
-        "heartbeat.interval.ms" => 100,
-        "max.poll.interval.ms" => 1000,
-        "auto.offset.reset" => "earliest"
-      }
+      %{"auto.offset.reset" => "earliest"}
       |> Map.merge(user_consumer_params)
       # non-overridable params
       |> Map.merge(%{

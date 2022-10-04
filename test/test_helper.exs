@@ -1,2 +1,2 @@
-KafkaClient.Test.Helper.initialize_producer!()
+KafkaClient.Test.Helper.initialize!()
 ExUnit.start()
