@@ -36,6 +36,12 @@ defmodule KafkaClient.Test.Helper do
     test_pid = self()
     child_id = make_ref()
 
+    consumer_params =
+      Map.merge(
+        %{"max.poll.interval.ms" => 1000},
+        Keyword.get(opts, :consumer_params, %{})
+      )
+
     opts =
       [
         servers: servers(),
@@ -43,7 +49,7 @@ defmodule KafkaClient.Test.Helper do
         subscriptions: subscriptions,
         handler: &handle_consumer_event(&1, test_pid),
         commit_interval: 50,
-        consumer_params: Keyword.get(opts, :consumer_params, %{}),
+        consumer_params: consumer_params,
         drain: Keyword.get(opts, :drain, 0)
       ] ++ Keyword.take(opts, ~w/name/a)
 

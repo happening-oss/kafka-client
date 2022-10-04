@@ -63,8 +63,10 @@ defmodule KafkaClient.Consumer.FlowTest do
   test "partitions lost notification" do
     group_id = unique("test_group")
 
-    # using cooperative rebalance to avoid losing all partitions on rebalance
     consumer_params = %{
+      # shorten the heartbeat interval to avoid RebalanceInProgressException
+      "heartbeat.interval.ms" => 100,
+      # using cooperative rebalance to avoid losing all partitions on rebalance
       "partition.assignment.strategy" =>
         "org.apache.kafka.clients.consumer.CooperativeStickyAssignor"
     }
