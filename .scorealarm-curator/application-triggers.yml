@@ -4,7 +4,7 @@
 
 
 triggered dependency update:
-  tags: ["scorealarm", "trigger", "amd64"]
+  tags: ["scorealarm", "trigger", "arm64"]
   stage: stage_triggers
   retry: 2
   resource_group: dependency_upgrade
@@ -23,7 +23,7 @@ triggered dependency update:
 
 
 scheduled dependency update:
-  tags: ["scorealarm", "trigger", "amd64"]
+  tags: ["scorealarm", "trigger", "arm64"]
   stage: stage_triggers
   retry: 2
   resource_group: dependency_upgrade
