@@ -36,7 +36,7 @@
 
 
 develop test:
-  tags: ["scorealarm", "test", "amd64"]
+  tags: ["scorealarm", "test", "arm64"]
   stage: test
   retry: 2
   interruptible: true
@@ -54,7 +54,7 @@ develop test:
 
 
 copy documentation:
-  tags: ["scorealarm", "test", "amd64"]
+  tags: ["scorealarm", "test", "arm64"]
   stage: test
   allow_failure: true
   retry: 2
@@ -72,7 +72,7 @@ copy documentation:
     - MIX_ENV=prod_test mix surgy_ci.docs
 
 test:
-  tags: ["scorealarm", "test", "amd64"]
+  tags: ["scorealarm", "test", "arm64"]
   stage: test
   timeout: 30m
   except:
@@ -90,7 +90,7 @@ test:
 
 
 deps audit:
-  tags: ["scorealarm", "test", "amd64"]
+  tags: ["scorealarm", "test", "arm64"]
   stage: test
   allow_failure: false
   retry: 2
@@ -109,7 +109,7 @@ deps audit:
     - ~/.mix/escripts/mix_audit --ignore-package-names $ELIXIR_AUDIT_EXCLUDE
 
 credo check:
-  tags: ["scorealarm", "test", "amd64"]
+  tags: ["scorealarm", "test", "arm64"]
   stage: test
   allow_failure: true
   retry: 0
@@ -130,10 +130,12 @@ credo check:
 
 
 release:
-  tags: ["scorealarm", "release", "amd64"]
+  tags: ["scorealarm", "release", "arm64"]
   stage: compile
   retry: 2
   timeout: 30m
+  variables:
+    BUILD_ARCH: arm64
   rules:
   - if: '$CI_PIPELINE_SOURCE == "trigger" && $MANUAL_RELEASE_TRIGGER == "true"'
     when: always
