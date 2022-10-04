@@ -4,6 +4,7 @@ defmodule KafkaClient.ProducerTest do
   import KafkaClient.Test.Helper
   alias KafkaClient.Producer
 
+  @tag :require_kafka
   test "produce" do
     [topic] = start_consumer!().subscriptions
     produced = produce(topic)
@@ -13,6 +14,7 @@ defmodule KafkaClient.ProducerTest do
     assert Map.take(produced, keys) == Map.take(consumed, keys)
   end
 
+  @tag :require_kafka
   test "sync_send" do
     [topic] = start_consumer!().subscriptions
 
@@ -30,6 +32,7 @@ defmodule KafkaClient.ProducerTest do
     assert consumed == expected
   end
 
+  @tag :require_kafka
   test "stop" do
     {:ok, producer} = Producer.start_link(servers: servers())
     mref = Process.monitor(producer)

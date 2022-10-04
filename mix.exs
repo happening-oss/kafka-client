@@ -19,7 +19,7 @@ defmodule KafkaClient.MixProject do
     ]
   end
 
-  defp elixirc_paths(env) when env in [:test], do: ["lib", "test/support"]
+  defp elixirc_paths(env) when env in [:test, :prod_test], do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do

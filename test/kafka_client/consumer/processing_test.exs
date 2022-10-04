@@ -3,6 +3,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
   import KafkaClient.Test.Helper
   alias KafkaClient.Admin
 
+  @tag :require_kafka
   test "sequential processing on a single topic-partition" do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
@@ -27,6 +28,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     assert record2.value == produced2.value
   end
 
+  @tag :require_kafka
   test "concurrent processing" do
     consumer = start_consumer!(num_topics: 2)
     [topic1, topic2] = consumer.subscriptions
@@ -40,6 +42,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     assert_processing(topic2, 0)
   end
 
+  @tag :require_kafka
   test "processed messages are committed" do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
@@ -78,6 +81,7 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     )
   end
 
+  @tag :require_kafka
   test "handler exception" do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions

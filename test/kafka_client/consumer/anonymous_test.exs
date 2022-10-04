@@ -2,6 +2,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
   use ExUnit.Case, async: true
   import KafkaClient.Test.Helper
 
+  @tag :require_kafka
   test "multiple consumers" do
     subscriptions = start_consumer!(group_id: nil, num_topics: 2).subscriptions
     start_consumer!(group_id: nil, subscriptions: subscriptions, recreate_topics?: false)
@@ -32,6 +33,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     assert assert_processing(topic2, 0).offset == produced3.offset
   end
 
+  @tag :require_kafka
   test "caught up event" do
     # if the topics are empty, consumer should immediately get a caught-up notification
     consumer1 = start_consumer!(group_id: nil, num_topics: 2)
@@ -98,6 +100,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     refute_caught_up()
   end
 
+  @tag :require_kafka
   test "partition assignment" do
     topic1 = new_test_topic()
     topic2 = new_test_topic()
@@ -119,6 +122,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     refute_processing(topic3, 1)
   end
 
+  @tag :require_kafka
   test "initial position via offset" do
     topic = new_test_topic()
 
@@ -138,6 +142,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     assert processing.offset == record2.offset
   end
 
+  @tag :require_kafka
   test "initial position via timestamp" do
     topic = new_test_topic()
 

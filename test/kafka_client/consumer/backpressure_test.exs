@@ -2,6 +2,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
   use ExUnit.Case, async: true
   import KafkaClient.Test.Helper
 
+  @tag :require_kafka
   test "buffer length based pause" do
     consumer = start_consumer!(num_topics: 2)
     [topic1, topic2] = consumer.subscriptions
@@ -32,6 +33,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     assert_polled(topic1, 0, first_paused_offset)
   end
 
+  @tag :require_kafka
   test "messages size based pause" do
     consumer = start_consumer!(num_topics: 2)
     [topic1, topic2] = consumer.subscriptions
@@ -64,6 +66,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     assert_polled(topic1, 0, first_paused_offset)
   end
 
+  @tag :require_kafka
   test "topic-partition is not paused if the buffer is empty" do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions

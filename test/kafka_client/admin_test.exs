@@ -15,12 +15,14 @@ defmodule KafkaClient.AdminTest do
     {:ok, admin: admin}
   end
 
+  @tag :require_kafka
   test "list_topics", ctx do
     topic = new_test_topic()
     recreate_topics([topic])
     assert topic in Admin.list_topics(ctx.admin)
   end
 
+  @tag :require_kafka
   test "describe_topics", ctx do
     assert {:error, error} = Admin.describe_topics(ctx.admin, ["unknown_topic"])
     assert error == "This server does not host this topic-partition."
@@ -34,6 +36,7 @@ defmodule KafkaClient.AdminTest do
     assert topics == %{topic1 => [0], topic2 => [0, 1]}
   end
 
+  @tag :require_kafka
   test "list_end_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
     assert error == "This server does not host this topic-partition."
@@ -57,6 +60,7 @@ defmodule KafkaClient.AdminTest do
            }
   end
 
+  @tag :require_kafka
   test "list_consumer_group_offsets", ctx do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
@@ -74,6 +78,7 @@ defmodule KafkaClient.AdminTest do
     assert committed == %{{topic, 0} => last_processed_offset_partition_0 + 1, {topic, 1} => nil}
   end
 
+  @tag :require_kafka
   test "stop", ctx do
     mref = Process.monitor(ctx.admin)
     Admin.stop(ctx.admin)

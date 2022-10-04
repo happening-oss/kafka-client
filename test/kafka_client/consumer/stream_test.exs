@@ -3,6 +3,7 @@ defmodule Consumer.StreamTest do
   import KafkaClient.Test.Helper
   alias KafkaClient.Consumer
 
+  @tag :require_kafka
   test "consuming until the end" do
     topic1 = new_test_topic()
     topic2 = new_test_topic()
@@ -42,6 +43,7 @@ defmodule Consumer.StreamTest do
     assert consumed == produced
   end
 
+  @tag :require_kafka
   test "cleanup" do
     topic1 = new_test_topic()
 
