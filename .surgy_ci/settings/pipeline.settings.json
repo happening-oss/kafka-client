@@ -1,12 +1,13 @@
 {
   "pipeline_type": "surgy-v1-arm",
-  "project_type": "library",
+  "project_type": "application",
+  "build_arch": "arm64",
   "additional_services": [
     "617709483204.dkr.ecr.eu-west-1.amazonaws.com/docker:20.10.14-dind-alpine3.15"
   ],
   ".state": {
-    "build_image": "registry.gitlab.com/superbet/scorealarm-ops/ci-elixir-builder/elixir-builder-alpine-amd64:1.13.4-erlang-25.0-alpine-3.15.4-41",
-    "deploy_image": "registry.gitlab.com/superbet/scorealarm-ops/ci-elixir-builder/elixir-builder-alpine-amd64:1.13.4-erlang-25.0-alpine-3.15.4-41",
+    "build_image": "registry.gitlab.com/superbet/scorealarm-ops/ci-elixir-builder/elixir-builder-alpine-arm64:1.13.4-erlang-25.0-alpine-3.15.4-38",
+    "deploy_image": "registry.gitlab.com/superbet/scorealarm-ops/ci-elixir-builder/elixir-builder-alpine-arm64:1.13.4-erlang-25.0-alpine-3.15.4-38",
     "template_path": "templates/surgy/application"
   }
 }
