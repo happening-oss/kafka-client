@@ -21,6 +21,7 @@ public class Main implements Port {
       Map.entry("describe_topics", this::describeTopics),
       Map.entry("list_topics", this::listTopics),
       Map.entry("list_end_offsets", this::listEndOffsets),
+      Map.entry("list_earliest_offsets", this::listEarliestOffsets),
       Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets),
       Map.entry("create_topics", this::createTopics),
       Map.entry("delete_topics", this::deleteTopics));
@@ -91,6 +92,38 @@ public class Main implements Port {
     var topicPartitionTuple : ((Iterable<Object[]>) command.args()[0])) {
       var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
       topicPartitionOffsets.put(topicPartition, OffsetSpec.latest());
+    }
+
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          admin.listOffsets(topicPartitionOffsets).all().get(),
+          entry -> {
+            return Erlang.mapEntry(
+                Erlang.tuple(
+                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
+                    new OtpErlangInt(entry.getKey().partition())),
+                new OtpErlangLong(entry.getValue().offset()));
+
+          });
+      response = Erlang.ok(map);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer listEarliestOffsets(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+
+    var topicPartitionOffsets = new HashMap<TopicPartition, OffsetSpec>();
+    for (@SuppressWarnings("unchecked")
+    var topicPartitionTuple : ((Iterable<Object[]>) command.args()[0])) {
+      var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
+      topicPartitionOffsets.put(topicPartition, OffsetSpec.earliest());
     }
 
     OtpErlangObject response;
