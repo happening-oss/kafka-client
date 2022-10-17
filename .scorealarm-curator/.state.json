@@ -13,11 +13,11 @@
       }
     ],
     "file_hash": {
-      ".gitlab-ci.yml": "ab21866e4187818bb327f364d75b86f72db21079d0f2e7575b583bf960d2cf4a",
+      ".gitlab-ci.yml": "d0542a03be33706b8dd5d03daa99bac30c4e2ea167aad2271bbf0cbbc83ab5f1",
       ".scorealarm-curator/application-compile-and-release.yml": "5cc075251e7ad7748a53c0067b791e3b06487a9f5bf773c3b514cce42fe4b236",
       ".scorealarm-curator/application-deploy.yml": "758298b57a108ab37b521a14bdf5660203cdcb7c099086c3f9da907acae56452",
       ".scorealarm-curator/application-triggers.yml": "0fdc69e817273942176e2bd5d1e1832ceffab641f62fe968ce57e619de78d497",
-      ".surgy_ci/settings/pipeline.settings.json": "ac1dbb24c132031747ee7049d4b2c1fbf2ead559640aa74f680ba797ef0c116b"
+      ".surgy_ci/settings/pipeline.settings.json": "4bfc80c03f2800d7a2f0daa3a1b8ab96a1d8ffd515bc85d182cc3bf82dbc88fe"
     }
   },
   "project_config": {
