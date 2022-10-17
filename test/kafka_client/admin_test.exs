@@ -61,6 +61,25 @@ defmodule KafkaClient.AdminTest do
   end
 
   @tag :require_kafka
+  test "list_earliest_offsets", ctx do
+    assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
+    assert error == "This server does not host this topic-partition."
+
+    topic1 = new_test_topic()
+    topic2 = new_test_topic()
+    recreate_topics([topic1, topic2])
+
+    topic_partitions = [{topic1, 0}, {topic1, 1}, {topic2, 0}]
+    assert {:ok, mapping} = Admin.list_end_offsets(ctx.admin, topic_partitions)
+
+    assert mapping == %{
+             {topic1, 0} => 0,
+             {topic1, 1} => 0,
+             {topic2, 0} => 0
+           }
+  end
+
+  @tag :require_kafka
   test "list_consumer_group_offsets", ctx do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions

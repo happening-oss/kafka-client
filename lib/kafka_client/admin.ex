@@ -47,6 +47,16 @@ defmodule KafkaClient.Admin do
     do: GenPort.call(server, :list_end_offsets, [topic_partitions])
 
   @doc """
+  Returns the list of earliest offsets for the given topic partitions.
+  If no record has been produced, the offset will be zero.
+  """
+  @spec list_earliest_offsets(GenServer.server(), [KafkaClient.topic_partition()]) ::
+          {:ok, %{KafkaClient.topic_partition() => KafkaClient.offset()}}
+          | {:error, String.t()}
+  def list_earliest_offsets(server, topic_partitions),
+    do: GenPort.call(server, :list_earliest_offsets, [topic_partitions])
+
+  @doc """
   Returns committed offsets for the given consumer group in the given partitions.
 
   Each returned offset is equal to the last committed offset incremented by 1. If the group does
