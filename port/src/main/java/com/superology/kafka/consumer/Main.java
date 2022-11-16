@@ -50,7 +50,7 @@ public class Main implements Port, ConsumerRebalanceListener {
         startConsumerGroupConsuming(consumer, opts.subscriptions);
 
       var pollInterval = (int) opts.pollerProps().getOrDefault("poll_interval", 10);
-      var commitInterval = (int) opts.pollerProps().getOrDefault("commmit_interval", 5000);
+      var commitInterval = (int) opts.pollerProps().getOrDefault("commit_interval", 5000);
       commits = new Commits(consumer, commitInterval);
       backpressure = new Backpressure(consumer);
 
