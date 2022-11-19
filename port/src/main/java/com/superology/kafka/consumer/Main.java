@@ -49,8 +49,8 @@ public class Main implements Port, ConsumerRebalanceListener {
       else
         startConsumerGroupConsuming(consumer, opts.subscriptions);
 
-      var pollInterval = (int) opts.pollerProps().getOrDefault("poll_interval", 10);
-      var commitInterval = (int) opts.pollerProps().getOrDefault("commmit_interval", 5000);
+      var pollDuration = (int) opts.pollerProps().getOrDefault("poll_duration", 10);
+      var commitInterval = (int) opts.pollerProps().getOrDefault("commit_interval", 5000);
       commits = new Commits(consumer, commitInterval);
       backpressure = new Backpressure(consumer);
 
@@ -68,7 +68,7 @@ public class Main implements Port, ConsumerRebalanceListener {
         if (!isAnonymous)
           commits.flush(false);
 
-        var records = consumer.poll(java.time.Duration.ofMillis(pollInterval));
+        var records = consumer.poll(java.time.Duration.ofMillis(pollDuration));
 
         for (var record : records) {
           // Each record is sent separately to Elixir, instead of sending them
