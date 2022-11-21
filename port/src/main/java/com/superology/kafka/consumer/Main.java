@@ -171,8 +171,14 @@ public class Main implements Port, ConsumerRebalanceListener {
     // allows us to fire the "caught_up" notification, issued after all the
     // records, existing at the time of the assignment, are processed.
     this.endOffsets = new HashSet<>();
+
+    // For partitions that have no records because of retention, we have to
+    // detect if beginning offset is different to end offset because ack will
+    // never happen, and caught-up event will never be emitted
+    var beginningOffsets = consumer.beginningOffsets(assignments);
+
     for (var entry : consumer.endOffsets(assignments).entrySet()) {
-      if (entry.getValue() > 0)
+      if (entry.getValue() > 0 && beginningOffsets.get(entry.getKey()) != entry.getValue())
         this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
     }
 
