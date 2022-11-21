@@ -22,6 +22,8 @@ public class Main implements Port {
       Map.entry("list_topics", this::listTopics),
       Map.entry("list_end_offsets", this::listEndOffsets),
       Map.entry("list_earliest_offsets", this::listEarliestOffsets),
+      Map.entry("list_consumer_groups", this::listConsumerGroups),
+      Map.entry("delete_consumer_groups", this::deleteConsumerGroups),
       Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets),
       Map.entry("create_topics", this::createTopics),
       Map.entry("delete_topics", this::deleteTopics));
@@ -140,6 +142,64 @@ public class Main implements Port {
           });
       response = Erlang.ok(map);
     } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer listConsumerGroups(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+
+    var options = new ListConsumerGroupsOptions();
+
+    OtpErlangObject response;
+    try {
+      var list = Erlang.toList(
+          admin.listConsumerGroups(options).valid().get(),
+          entry -> {
+            var state = entry.state().isPresent() ? new OtpErlangAtom(entry.state().get().toString().toLowerCase())
+                : new OtpErlangAtom("undefiend");
+            return Erlang.tuple(new OtpErlangBinary(entry.groupId().getBytes()), state);
+          });
+
+      response = Erlang.ok(list);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer deleteConsumerGroups(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+
+    @SuppressWarnings("unchecked")
+    var consumerGroups = (Collection<String>) command.args()[0];
+    var options = new DeleteConsumerGroupsOptions();
+
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          admin.deleteConsumerGroups(consumerGroups, options).deletedGroups(),
+          entry -> {
+            OtpErlangObject result = Erlang.ok();
+            try {
+              entry.getValue().get();
+            } catch (Exception e) {
+              result = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            }
+
+            return Erlang.mapEntry(new OtpErlangBinary(entry.getKey().getBytes()), result);
+          });
+
+      response = Erlang.ok(map);
+
+    } catch (Exception e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }
 

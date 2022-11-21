@@ -80,6 +80,41 @@ defmodule KafkaClient.AdminTest do
   end
 
   @tag :require_kafka
+  test "list_consumer_groups", ctx do
+    consumer = start_consumer!()
+    group_id = consumer.group_id
+
+    {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
+    assert {group_id, :stable} in consumer_groups
+
+    KafkaClient.Consumer.stop(consumer.pid)
+
+    {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
+    assert {group_id, :empty} in consumer_groups
+  end
+
+  @tag :require_kafka
+  test "delete_consumer_groups", ctx do
+    consumer_1 = start_consumer!()
+    group_id_1 = consumer_1.group_id
+
+    consumer_2 = start_consumer!()
+    group_id_2 = consumer_2.group_id
+    KafkaClient.Consumer.stop(consumer_2.pid)
+
+    {:ok, deleted_groups_result} =
+      Admin.delete_consumer_groups(ctx.admin, [group_id_1, group_id_2])
+
+    assert deleted_groups_result == %{
+             group_id_1 => {:error, "The group is not empty."},
+             group_id_2 => :ok
+           }
+
+    {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
+    refute Enum.any?(consumer_groups, fn {group_id, _} -> group_id == group_id_2 end)
+  end
+
+  @tag :require_kafka
   test "list_consumer_group_offsets", ctx do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions

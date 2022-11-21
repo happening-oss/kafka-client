@@ -57,6 +57,35 @@ defmodule KafkaClient.Admin do
     do: GenPort.call(server, :list_earliest_offsets, [topic_partitions])
 
   @doc """
+  Returns the list of valid consumer groups in cluster
+  Possible states defined here: https://kafka.apache.org/32/javadoc/org/apache/kafka/common/ConsumerGroupState.html
+  """
+  @spec list_consumer_groups(GenServer.server()) ::
+          {:ok,
+           [
+             {String.t(),
+              :completing_rebalance
+              | :dead
+              | :empty
+              | :preparing_rebalance
+              | :stable
+              | :unknown
+              | :undefined}
+           ]}
+          | {:error, String.t()}
+  def list_consumer_groups(server),
+    do: GenPort.call(server, :list_consumer_groups, [])
+
+  @doc """
+  Deletes consumer groups.
+  It will return list of deleted groups with :ok or :error tuples with message
+  """
+  @spec delete_consumer_groups(GenServer.server(), [String.t()]) ::
+          {:ok, %{String.t() => :ok | {:error, String.t()}}} | {:error, String.t()}
+  def delete_consumer_groups(server, consumer_groups),
+    do: GenPort.call(server, :delete_consumer_groups, [consumer_groups])
+
+  @doc """
   Returns committed offsets for the given consumer group in the given partitions.
 
   Each returned offset is equal to the last committed offset incremented by 1. If the group does
