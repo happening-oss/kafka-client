@@ -4,7 +4,9 @@ import java.util.*;
 import java.util.concurrent.*;
 
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.clients.admin.ConfigEntry.ConfigType;
 import org.apache.kafka.common.*;
+import org.apache.kafka.common.config.ConfigResource;
 
 import com.ericsson.otp.erlang.*;
 
@@ -19,6 +21,7 @@ public class Main implements Port {
   private Map<String, Handler> dispatchMap = Map.ofEntries(
       Map.entry("stop", this::stop),
       Map.entry("describe_topics", this::describeTopics),
+      Map.entry("describe_topics_config", this::describeTopicsConfig),
       Map.entry("list_topics", this::listTopics),
       Map.entry("list_end_offsets", this::listEndOffsets),
       Map.entry("list_earliest_offsets", this::listEarliestOffsets),
@@ -65,7 +68,6 @@ public class Main implements Port {
     OtpErlangObject response;
     try {
       var descriptions = admin.describeTopics(TopicCollection.ofTopicNames(topics));
-
       var map = Erlang.toMap(
           descriptions.allTopicNames().get(),
           entry -> {
@@ -74,6 +76,45 @@ public class Main implements Port {
                 entry.getValue().partitions(),
                 partition -> new OtpErlangInt(partition.partition()));
             return Erlang.mapEntry(topic, partitions);
+          });
+
+      response = Erlang.ok(map);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer describeTopicsConfig(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+    @SuppressWarnings("unchecked")
+    var topics = (Collection<String>) command.args()[0];
+    OtpErlangObject response;
+    try {
+
+      var configs = (Collection<ConfigResource>) new ArrayList<ConfigResource>();
+      topics.forEach(topic -> configs.add(new ConfigResource(ConfigResource.Type.TOPIC, topic)));
+      // var bla = admin.describeConfigs(configs).all().get();
+      // bla.forEach((k, v) -> {
+      // System.out.println((k + "\n"));
+      // v.entries().forEach(e -> System.out.println((e.toString() + "\n")));
+      // });
+      var map = Erlang.toMap(
+          admin.describeConfigs(configs).all().get(),
+          conf -> {
+            // var name = new OtpErlangBinary();
+            System.out.println((conf.getKey().toString() + "\n"));
+            conf.getValue().entries();
+            var topic = new OtpErlangBinary(conf.getKey().name().getBytes());
+            OtpErlangObject params = Erlang.toList(conf.getValue().entries(),
+                entry -> {
+                  return Erlang.tuple(new OtpErlangBinary(entry.name().getBytes()),
+                      new OtpErlangBinary(entry.value().getBytes()), new OtpErlangAtom(entry.isDefault()));
+                });
+            return Erlang.mapEntry(topic, params);
           });
 
       response = Erlang.ok(map);

@@ -34,6 +34,13 @@ defmodule KafkaClient.Admin do
           | {:error, String.t()}
   def describe_topics(server, topics), do: GenPort.call(server, :describe_topics, [topics])
 
+  @doc "Returns the list of partitions for the given topics."
+  @spec describe_topics_config(GenServer.server(), KafkaClient.topic()) ::
+          {:ok, %{String.t() => []}}
+          | {:error, String.t()}
+  def describe_topics_config(server, topics),
+    do: GenPort.call(server, :describe_topics_config, [topics])
+
   @doc """
   Returns the list of end offsets for the given topic partitions.
 
