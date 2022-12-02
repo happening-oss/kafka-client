@@ -97,11 +97,7 @@ public class Main implements Port {
 
       var configs = (Collection<ConfigResource>) new ArrayList<ConfigResource>();
       topics.forEach(topic -> configs.add(new ConfigResource(ConfigResource.Type.TOPIC, topic)));
-      // var bla = admin.describeConfigs(configs).all().get();
-      // bla.forEach((k, v) -> {
-      // System.out.println((k + "\n"));
-      // v.entries().forEach(e -> System.out.println((e.toString() + "\n")));
-      // });
+
       var map = Erlang.toMap(
           admin.describeConfigs(configs).all().get(),
           conf -> {
