@@ -4,7 +4,6 @@ import java.util.*;
 import java.util.concurrent.*;
 
 import org.apache.kafka.clients.admin.*;
-import org.apache.kafka.clients.admin.ConfigEntry.ConfigType;
 import org.apache.kafka.common.*;
 import org.apache.kafka.common.config.ConfigResource;
 
@@ -101,8 +100,6 @@ public class Main implements Port {
       var map = Erlang.toMap(
           admin.describeConfigs(configs).all().get(),
           conf -> {
-            // var name = new OtpErlangBinary();
-            System.out.println((conf.getKey().toString() + "\n"));
             conf.getValue().entries();
             var topic = new OtpErlangBinary(conf.getKey().name().getBytes());
             OtpErlangObject params = Erlang.toList(conf.getValue().entries(),

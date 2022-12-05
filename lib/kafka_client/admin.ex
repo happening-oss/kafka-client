@@ -34,7 +34,10 @@ defmodule KafkaClient.Admin do
           | {:error, String.t()}
   def describe_topics(server, topics), do: GenPort.call(server, :describe_topics, [topics])
 
-  @doc "Returns the list of partitions for the given topics."
+  @doc """
+  Returns the configuration of the given topics. Config is a list of topic parameters
+  in format of a tuple: {name, value, is_default?}
+  """
   @spec describe_topics_config(GenServer.server(), KafkaClient.topic()) ::
           {:ok, %{KafkaClient.topic() => [{String.t(), String.t(), boolean()}]}}
           | {:error, String.t()}
