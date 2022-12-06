@@ -76,6 +76,9 @@ defmodule KafkaClient.Admin do
   def list_consumer_groups(server),
     do: GenPort.call(server, :list_consumer_groups, [])
 
+  def describe_consumer_groups(server, consumer_groups),
+    do: GenPort.call(server, :describe_consumer_groups, consumer_groups)
+
   @doc """
   Deletes consumer groups.
   It will return list of deleted groups with :ok or :error tuples with message

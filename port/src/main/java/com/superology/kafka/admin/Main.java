@@ -23,6 +23,7 @@ public class Main implements Port {
       Map.entry("list_end_offsets", this::listEndOffsets),
       Map.entry("list_earliest_offsets", this::listEarliestOffsets),
       Map.entry("list_consumer_groups", this::listConsumerGroups),
+      Map.entry("describe_consumer_groups", this::describeConsumerGroups),
       Map.entry("delete_consumer_groups", this::deleteConsumerGroups),
       Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets),
       Map.entry("create_topics", this::createTopics),
@@ -166,6 +167,47 @@ public class Main implements Port {
           });
 
       response = Erlang.ok(list);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer describeConsumerGroups(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+    @SuppressWarnings("unchecked")
+    var consumerGroups = (Collection<String>) command.args()[0];
+
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          admin.describeConsumerGroups(consumerGroups).all().get(),
+          entry -> {
+            var groupName = new OtpErlangBinary(entry.getKey().getBytes());
+            var topicsPartitions = new ArrayList<OtpErlangTuple>();
+            entry.getValue()
+                .members().forEach(member -> {
+                  System.out.println((member.toString() + "\n"));
+                  member.assignment()
+                    .topicPartitions().forEach(d -> topicsPartitions
+                        .add(Erlang.tuple(
+                            new OtpErlangBinary(d.topic().getBytes()),
+                            new OtpErlangInt(d.partition()),
+                            new OtpErlangBinary(member.consumerId().getBytes()))));
+                          });
+            var description = Erlang.toList(
+                topicsPartitions,
+                tp -> {
+                  return tp;
+                });
+
+            return Erlang.mapEntry(groupName, description);
+          });
+
+      response = Erlang.ok(map);
     } catch (ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }
