@@ -196,7 +196,9 @@ public class Main implements Port {
                         .add(Erlang.tuple(
                             new OtpErlangBinary(d.topic().getBytes()),
                             new OtpErlangInt(d.partition()),
-                            new OtpErlangBinary(member.consumerId().getBytes()))));
+                            new OtpErlangBinary(member.consumerId().getBytes()),
+                            new OtpErlangAtom(entry.getValue().state().toString().toLowerCase())
+                            )));
                           });
             var description = Erlang.toList(
                 topicsPartitions,

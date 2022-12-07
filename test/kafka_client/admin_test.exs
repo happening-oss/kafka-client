@@ -115,6 +115,22 @@ defmodule KafkaClient.AdminTest do
   end
 
   @tag :require_kafka
+  test "describe_consumer_groups", ctx do
+    consumer = start_consumer!()
+    group_id = consumer.group_id
+
+    {:ok, consumer_groups} = Admin.describe_consumer_groups(ctx.admin, [consumer.group_id])
+
+    assert length(consumer_groups[group_id]) == 2 and
+             Enum.all?(consumer_groups[group_id], &is_tuple(&1))
+
+    KafkaClient.Consumer.stop(consumer.pid)
+
+    {:ok, consumer_groups} = Admin.describe_consumer_groups(ctx.admin, [consumer.group_id])
+    assert %{group_id => []} == consumer_groups
+  end
+
+  @tag :require_kafka
   test "list_consumer_group_offsets", ctx do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
