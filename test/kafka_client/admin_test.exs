@@ -37,6 +37,78 @@ defmodule KafkaClient.AdminTest do
   end
 
   @tag :require_kafka
+  test "describe_topics_config", ctx do
+    assert {:error, error} = Admin.describe_topics_config(ctx.admin, ["unknown_topic"])
+    assert error == ""
+
+    topic1 = new_test_topic()
+    topic2 = new_test_topic()
+
+    recreate_topics([{topic1, 1}, {topic2, 2}])
+
+    assert {:ok, topics} = Admin.describe_topics_config(ctx.admin, [topic1, topic2])
+
+    assert topics == %{
+             topic1 => [
+               {"compression.type", "producer", true},
+               {"leader.replication.throttled.replicas", "", true},
+               {"message.downconversion.enable", "true", true},
+               {"min.insync.replicas", "1", true},
+               {"segment.jitter.ms", "0", true},
+               {"cleanup.policy", "delete", true},
+               {"flush.ms", "9223372036854775807", true},
+               {"follower.replication.throttled.replicas", "", true},
+               {"segment.bytes", "1073741824", false},
+               {"retention.ms", "25920000000", true},
+               {"flush.messages", "9223372036854775807", true},
+               {"message.format.version", "2.8-IV1", true},
+               {"file.delete.delay.ms", "60000", true},
+               {"max.compaction.lag.ms", "9223372036854775807", true},
+               {"max.message.bytes", "52428800", false},
+               {"min.compaction.lag.ms", "0", true},
+               {"message.timestamp.type", "CreateTime", true},
+               {"preallocate", "false", true},
+               {"min.cleanable.dirty.ratio", "0.5", true},
+               {"index.interval.bytes", "4096", true},
+               {"unclean.leader.election.enable", "false", true},
+               {"retention.bytes", "-1", true},
+               {"delete.retention.ms", "86400000", true},
+               {"segment.ms", "604800000", true},
+               {"message.timestamp.difference.max.ms", "9223372036854775807", true},
+               {"segment.index.bytes", "10485760", true}
+             ],
+             topic2 => [
+               {"compression.type", "producer", true},
+               {"leader.replication.throttled.replicas", "", true},
+               {"message.downconversion.enable", "true", true},
+               {"min.insync.replicas", "1", true},
+               {"segment.jitter.ms", "0", true},
+               {"cleanup.policy", "delete", true},
+               {"flush.ms", "9223372036854775807", true},
+               {"follower.replication.throttled.replicas", "", true},
+               {"segment.bytes", "1073741824", false},
+               {"retention.ms", "25920000000", true},
+               {"flush.messages", "9223372036854775807", true},
+               {"message.format.version", "2.8-IV1", true},
+               {"file.delete.delay.ms", "60000", true},
+               {"max.compaction.lag.ms", "9223372036854775807", true},
+               {"max.message.bytes", "52428800", false},
+               {"min.compaction.lag.ms", "0", true},
+               {"message.timestamp.type", "CreateTime", true},
+               {"preallocate", "false", true},
+               {"min.cleanable.dirty.ratio", "0.5", true},
+               {"index.interval.bytes", "4096", true},
+               {"unclean.leader.election.enable", "false", true},
+               {"retention.bytes", "-1", true},
+               {"delete.retention.ms", "86400000", true},
+               {"segment.ms", "604800000", true},
+               {"message.timestamp.difference.max.ms", "9223372036854775807", true},
+               {"segment.index.bytes", "10485760", true}
+             ]
+           }
+  end
+
+  @tag :require_kafka
   test "list_end_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
     assert error == "This server does not host this topic-partition."
