@@ -25,6 +25,7 @@ public class Main implements Port {
       Map.entry("list_end_offsets", this::listEndOffsets),
       Map.entry("list_earliest_offsets", this::listEarliestOffsets),
       Map.entry("list_consumer_groups", this::listConsumerGroups),
+      Map.entry("describe_consumer_groups", this::describeConsumerGroups),
       Map.entry("delete_consumer_groups", this::deleteConsumerGroups),
       Map.entry("list_consumer_group_offsets", this::listConsumerGroupOffsets),
       Map.entry("create_topics", this::createTopics),
@@ -200,6 +201,46 @@ public class Main implements Port {
           });
 
       response = Erlang.ok(list);
+    } catch (ExecutionException e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer describeConsumerGroups(Admin admin, Port.Command command, Output output)
+      throws InterruptedException {
+    @SuppressWarnings("unchecked")
+    var consumerGroups = (Collection<String>) command.args()[0];
+
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          admin.describeConsumerGroups(consumerGroups).all().get(),
+          entry -> {
+            var groupName = new OtpErlangBinary(entry.getKey().getBytes());
+
+            var members = Erlang.toList(entry.getValue().members(), member -> {
+              var consumerId = member.consumerId();
+              var assignments = Erlang.toList(member.assignment().topicPartitions(), assignment -> {
+                return Erlang.tuple(
+                    new OtpErlangBinary(assignment.topic().getBytes()),
+                    new OtpErlangInt(assignment.partition()));
+              });
+
+              return Erlang.tuple(new OtpErlangBinary(consumerId.getBytes()), assignments);
+            });
+            OtpErlangMap description = new OtpErlangMap();
+            description.put(new OtpErlangAtom("members"), members);
+            description.put(new OtpErlangAtom("state"),
+                new OtpErlangAtom(entry.getValue().state().toString().toLowerCase()));
+
+            return Erlang.mapEntry(groupName, description);
+          });
+
+      response = Erlang.ok(map);
     } catch (ExecutionException e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }

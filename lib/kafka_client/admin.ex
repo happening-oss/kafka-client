@@ -73,18 +73,32 @@ defmodule KafkaClient.Admin do
   @spec list_consumer_groups(GenServer.server()) ::
           {:ok,
            [
-             {String.t(),
-              :completing_rebalance
-              | :dead
-              | :empty
-              | :preparing_rebalance
-              | :stable
-              | :unknown
-              | :undefined}
+             {String.t(), KafkaClient.consumer_state()}
            ]}
           | {:error, String.t()}
   def list_consumer_groups(server),
     do: GenPort.call(server, :list_consumer_groups, [])
+
+  @doc """
+  Returns a map of consumer groups with their descriptions.
+  It describes to which topic/partition the consumer group is asseigned to
+  as well as which client is connected to which partitions and what the group state is.`
+  """
+  @spec describe_consumer_groups(GenServer.server(), [String.t()]) ::
+          {:ok,
+           %{
+             String.t() => %{
+               members:
+                 {String.t(),
+                  [
+                    {KafkaClient.topic(), KafkaClient.partition()}
+                  ]},
+               state: KafkaClient.consumer_state()
+             }
+           }}
+          | {:error, String.t()}
+  def describe_consumer_groups(server, consumer_groups),
+    do: GenPort.call(server, :describe_consumer_groups, [consumer_groups])
 
   @doc """
   Deletes consumer groups.
