@@ -36,10 +36,15 @@ defmodule KafkaClient.Admin do
 
   @doc """
   Returns the configuration of the given topics. Config is a list of topic parameters
-  in format of a tuple: {name, value, is_default?}
+  specified while creating a topic. This list can be found https://docs.confluent.io/platform/current/installation/configuration/topic-configs.html#ak-topic-configurations-for-cp
   """
   @spec describe_topics_config(GenServer.server(), KafkaClient.topic()) ::
-          {:ok, %{KafkaClient.topic() => [{String.t(), String.t(), boolean()}]}}
+          {:ok,
+           %{
+             KafkaClient.topic() => [
+               %{name: String.t(), value: String.t(), is_default: boolean()}
+             ]
+           }}
           | {:error, String.t()}
   def describe_topics_config(server, topics),
     do: GenPort.call(server, :describe_topics_config, [topics])

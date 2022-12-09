@@ -105,8 +105,12 @@ public class Main implements Port {
             var topic = new OtpErlangBinary(conf.getKey().name().getBytes());
             OtpErlangObject params = Erlang.toList(conf.getValue().entries(),
                 entry -> {
-                  return Erlang.tuple(new OtpErlangBinary(entry.name().getBytes()),
-                      new OtpErlangBinary(entry.value().getBytes()), new OtpErlangAtom(entry.isDefault()));
+                  var config = new OtpErlangMap();
+                  config.put(new OtpErlangAtom("name"), new OtpErlangBinary(entry.name().getBytes()));
+                  config.put(new OtpErlangAtom("value"), new OtpErlangBinary(entry.value().getBytes()));
+                  config.put(new OtpErlangAtom("is_default"), new OtpErlangAtom(entry.isDefault()));
+
+                  return config;
                 });
             return Erlang.mapEntry(topic, params);
           });
