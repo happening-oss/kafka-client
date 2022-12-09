@@ -77,10 +77,14 @@ defmodule KafkaClient.Admin do
   @spec describe_consumer_groups(GenServer.server(), [String.t()]) ::
           {:ok,
            %{
-             String.t() => [
-               {KafkaClient.topic(), KafkaClient.partition(), String.t(),
-                KafkaClient.consumer_state()}
-             ]
+             String.t() => %{
+               members:
+                 {String.t(),
+                  [
+                    {KafkaClient.topic(), KafkaClient.partition()}
+                  ]},
+               state: KafkaClient.consumer_state()
+             }
            }}
           | {:error, String.t()}
   def describe_consumer_groups(server, consumer_groups),

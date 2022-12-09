@@ -121,13 +121,11 @@ defmodule KafkaClient.AdminTest do
 
     {:ok, consumer_groups} = Admin.describe_consumer_groups(ctx.admin, [consumer.group_id])
 
-    assert length(consumer_groups[group_id]) == 2 and
-             Enum.all?(consumer_groups[group_id], &is_tuple(&1))
-
+    assert consumer_groups[group_id].state == :stable
     KafkaClient.Consumer.stop(consumer.pid)
 
     {:ok, consumer_groups} = Admin.describe_consumer_groups(ctx.admin, [consumer.group_id])
-    assert %{group_id => []} == consumer_groups
+    assert %{group_id => %{members: [], state: :empty}} == consumer_groups
   end
 
   @tag :require_kafka

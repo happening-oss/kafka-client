@@ -187,24 +187,21 @@ public class Main implements Port {
           admin.describeConsumerGroups(consumerGroups).all().get(),
           entry -> {
             var groupName = new OtpErlangBinary(entry.getKey().getBytes());
-            var topicsPartitions = new ArrayList<OtpErlangTuple>();
-            entry.getValue()
-                .members().forEach(member -> {
-                  System.out.println((member.toString() + "\n"));
-                  member.assignment()
-                    .topicPartitions().forEach(d -> topicsPartitions
-                        .add(Erlang.tuple(
-                            new OtpErlangBinary(d.topic().getBytes()),
-                            new OtpErlangInt(d.partition()),
-                            new OtpErlangBinary(member.consumerId().getBytes()),
-                            new OtpErlangAtom(entry.getValue().state().toString().toLowerCase())
-                            )));
-                          });
-            var description = Erlang.toList(
-                topicsPartitions,
-                tp -> {
-                  return tp;
-                });
+
+            var members = Erlang.toList(entry.getValue().members(), member -> {
+              var consumerId = member.consumerId();
+              var assignments = Erlang.toList(member.assignment().topicPartitions(), assignment -> {
+                return Erlang.tuple(
+                    new OtpErlangBinary(assignment.topic().getBytes()),
+                    new OtpErlangInt(assignment.partition()));
+              });
+
+              return Erlang.tuple(new OtpErlangBinary(consumerId.getBytes()), assignments);
+            });
+            OtpErlangMap description = new OtpErlangMap();
+            description.put(new OtpErlangAtom("members"), members);
+            description.put(new OtpErlangAtom("state"),
+                new OtpErlangAtom(entry.getValue().state().toString().toLowerCase()));
 
             return Erlang.mapEntry(groupName, description);
           });
