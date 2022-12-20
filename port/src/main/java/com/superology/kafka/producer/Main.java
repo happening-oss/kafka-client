@@ -16,6 +16,7 @@ public class Main implements Port {
   }
 
   private Map<String, Handler> dispatchMap = Map.ofEntries(
+      Map.entry("metrics", this::metrics),
       Map.entry("stop", this::stop),
       Map.entry("send", this::send));
 
@@ -32,6 +33,34 @@ public class Main implements Port {
           return exitCode;
       }
     }
+  }
+
+  private Integer metrics(Producer producer, Port.Command command, Output output)
+      throws InterruptedException {
+    OtpErlangObject response;
+    try {
+      var map = Erlang.toMap(
+          producer.metrics(),
+          entry -> {
+            OtpErlangObject value;
+            var metricsValue = entry.getValue().metricValue();
+            if (metricsValue instanceof java.lang.Double val) {
+              value = Double.isNaN(val) ? Erlang.nil() : new OtpErlangDouble(val);
+            } else if (metricsValue instanceof java.lang.Long val) {
+              value = new OtpErlangLong(val);
+            } else {
+              value = new OtpErlangBinary(metricsValue.toString().getBytes());
+            }
+            return Erlang.mapEntry(new OtpErlangBinary(entry.getKey().name().getBytes()), value);
+          });
+      response = Erlang.ok(map);
+    } catch (Exception e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
   }
 
   private Integer stop(Producer producer, Port.Command command, Output output) {

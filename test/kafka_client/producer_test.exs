@@ -1,10 +1,10 @@
 defmodule KafkaClient.ProducerTest do
   use ExUnit.Case, async: true
-
   import KafkaClient.Test.Helper
   alias KafkaClient.Producer
 
-  @tag :require_kafka
+  @moduletag :require_kafka
+
   test "produce" do
     [topic] = start_consumer!().subscriptions
     produced = produce(topic)
@@ -14,7 +14,38 @@ defmodule KafkaClient.ProducerTest do
     assert Map.take(produced, keys) == Map.take(consumed, keys)
   end
 
-  @tag :require_kafka
+  test "produce - buffer size exceeded" do
+    [topic] = start_consumer!().subscriptions
+
+    {:ok, producer} =
+      Producer.start_link(
+        servers: servers(),
+        producer_params: %{
+          "internal.buffer_size" => 1024 * 1024
+        }
+      )
+
+    produce_large_msg = fn key, topic ->
+      Producer.send(
+        producer,
+        %{topic: topic, key: key, value: :crypto.strong_rand_bytes(1_000_000), partition: 0},
+        on_completion: fn
+          _ -> :ok
+        end
+      )
+    end
+
+    produced_response_1 = produce_large_msg.("key1", topic)
+    produced_response_2 = produce_large_msg.("key2", topic)
+
+    assert {produced_response_1, produced_response_2} == {:ok, {:error, :buffer_size_exceeded}}
+
+    consumed = assert_processing(topic, 0)
+    assert consumed.key == "key1"
+
+    refute_processing(topic, 0)
+  end
+
   test "sync_send" do
     [topic] = start_consumer!().subscriptions
 
@@ -32,11 +63,18 @@ defmodule KafkaClient.ProducerTest do
     assert consumed == expected
   end
 
-  @tag :require_kafka
   test "stop" do
     {:ok, producer} = Producer.start_link(servers: servers())
     mref = Process.monitor(producer)
     Producer.stop(producer)
     assert_receive {:DOWN, ^mref, :process, ^producer, _reason}
+  end
+
+  test "metrics" do
+    {:ok, producer} = Producer.start_link(servers: servers())
+    {:ok, metrics} = Producer.metrics(producer)
+    :ok = Producer.stop(producer)
+
+    assert is_map(metrics)
   end
 end

@@ -10,7 +10,7 @@ defmodule KafkaClient.Producer do
   Start the producer in the supervision tree. Typically it suffices to have one, globally registered producer:
 
       children = [
-        {KafkaClient.Producer, servers: ["localhost:9092"], name: :my_producer},
+        {KafkaClient.Producer, servers: ["localhost:9092"], name: :my_producer, producer_params: %{}},
         ...
       ]
       Supervisor.start_children(children, ...)
@@ -28,11 +28,16 @@ defmodule KafkaClient.Producer do
           {:error, reason} -> ...
         end
       )
+
+  `producer_params` is a map that is passed directly to Java's producer (https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html),
+  with exception of "internal.buffer_size" that denotes internal buffer to the producer.
   """
 
   use KafkaClient.GenPort
   import Kernel, except: [send: 2]
   alias KafkaClient.GenPort
+
+  @default_buffer_size 256 * 1024 * 1024
 
   @type record :: %{
           optional(:partition) => KafkaClient.partition() | nil,
@@ -60,7 +65,11 @@ defmodule KafkaClient.Producer do
           GenServer.on_start()
   def start_link(opts) do
     servers = Keyword.fetch!(opts, :servers)
-    user_producer_params = Keyword.get(opts, :producer_params, %{})
+
+    producer_params = Keyword.get(opts, :producer_params, %{})
+
+    {internal_buffer_size, user_producer_params} =
+      Map.pop(producer_params, "internal.buffer_size", @default_buffer_size)
 
     producer_params =
       Map.merge(
@@ -74,7 +83,7 @@ defmodule KafkaClient.Producer do
 
     GenPort.start_link(
       __MODULE__,
-      nil,
+      [max_buffer_size: internal_buffer_size],
       "producer.Main",
       [producer_params],
       Keyword.take(opts, ~w/name/a)
@@ -88,7 +97,11 @@ defmodule KafkaClient.Producer do
   @doc """
   Asynhronously sends a record to the producer.
 
-  This function returns true as soon as the record has been enqueued in internal producer's state.
+  This function returns :ok as soon as the record has been enqueued in internal producer's state,
+  or {:error, :buffer_size_exceeded} if internal buffer is full - clients should back-off and retry
+  when this happens. Overriding default buffer size of 256Mib is done by setting `internal.buffer_size`
+  in producer settings when spawning producer.
+
   The record will be sent sometime in the future, depending on the producer settings (see
   https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/KafkaProducer.html
   for details).
@@ -104,7 +117,8 @@ defmodule KafkaClient.Producer do
   If partition and/or timestamp values are not provided, they will be generated, as described in
   https://javadoc.io/static/org.apache.kafka/kafka-clients/3.2.3/org/apache/kafka/clients/producer/ProducerRecord.html.
   """
-  @spec send(GenServer.server(), record, on_completion: (publish_result -> any)) :: :ok
+  @spec send(GenServer.server(), record, on_completion: (publish_result -> any)) ::
+          :ok | {:error, :buffer_size_exceeded}
   def send(server, record, opts \\ []),
     do: GenServer.call(server, {:send, record, opts})
 
@@ -196,8 +210,18 @@ defmodule KafkaClient.Producer do
     )
   end
 
+  @doc """
+    Get the full set of internal metrics maintained by the producer.
+  """
+  @spec metrics(GenServer.server()) :: %{String.t() => integer() | float() | String.t()}
+  def metrics(server) do
+    GenPort.call(server, :metrics)
+  end
+
   @impl GenServer
-  def init(_), do: {:ok, %{callbacks: %{}, next_ref: 0}}
+  def init(params) do
+    {:ok, %{callbacks: %{}, next_ref: 0, producer_params: params, buffer_size: 0}}
+  end
 
   @impl GenServer
   def handle_call({:send, record, opts}, _from, state) do
@@ -211,23 +235,39 @@ defmodule KafkaClient.Producer do
         &Enum.map(&1, fn {key, value} -> {key, {:__binary__, value}} end)
       )
 
-    {ref, state} =
-      if callback = Keyword.get(opts, :on_completion) do
-        bin_ref = :erlang.term_to_binary(state.next_ref)
-        callbacks = Map.put(state.callbacks, bin_ref, callback)
-        {{:__binary__, bin_ref}, %{state | next_ref: state.next_ref + 1, callbacks: callbacks}}
-      else
-        {nil, state}
-      end
+    transport_record_size = :erlang.external_size(transport_record)
 
-    GenPort.command(GenPort.port(), :send, [transport_record, ref])
-    {:reply, :ok, state}
+    current_buffer_size = state.buffer_size + transport_record_size
+
+    if current_buffer_size < state.producer_params[:max_buffer_size] do
+      {ref, state} =
+        if callback = Keyword.get(opts, :on_completion) do
+          bin_ref = :erlang.term_to_binary(state.next_ref)
+          callbacks = Map.put(state.callbacks, bin_ref, {callback, transport_record_size})
+
+          {{:__binary__, bin_ref},
+           %{
+             state
+             | next_ref: state.next_ref + 1,
+               callbacks: callbacks,
+               buffer_size: current_buffer_size
+           }}
+        else
+          {nil, state}
+        end
+
+      GenPort.command(GenPort.port(), :send, [transport_record, ref])
+      {:reply, :ok, state}
+    else
+      {:reply, {:error, :buffer_size_exceeded}, state}
+    end
   end
 
   @impl GenPort
   def handle_port_message({:on_completion, ref, payload}, state) do
-    {callback, callbacks} = Map.pop!(state.callbacks, ref)
+    {{callback, record_size}, callbacks} = Map.pop!(state.callbacks, ref)
     callback.(payload)
-    {:noreply, %{state | callbacks: callbacks}}
+
+    {:noreply, %{state | callbacks: callbacks, buffer_size: state.buffer_size - record_size}}
   end
 end

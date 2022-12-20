@@ -2,7 +2,8 @@ defmodule KafkaClient.Consumer.FlowTest do
   use ExUnit.Case, async: true
   import KafkaClient.Test.Helper
 
-  @tag :require_kafka
+  @moduletag :require_kafka
+
   test "clean termination" do
     group_id = unique("test_group")
     consumer = start_consumer!(group_id: group_id, drain: :timer.seconds(1))
@@ -61,7 +62,6 @@ defmodule KafkaClient.Consumer.FlowTest do
     assert partition1_processing_after_shutdown.offset == partition1_record1.offset
   end
 
-  @tag :require_kafka
   test "partitions lost notification" do
     group_id = unique("test_group")
 
@@ -120,7 +120,6 @@ defmodule KafkaClient.Consumer.FlowTest do
     assert topic1_record_after_rebalance.offset == topic1_record_before_rebalance.offset
   end
 
-  @tag :require_kafka
   test "handling of a port crash" do
     consumer = start_consumer!()
     port = port(consumer)
@@ -132,7 +131,6 @@ defmodule KafkaClient.Consumer.FlowTest do
     end)
   end
 
-  @tag :require_kafka
   test "handling of a processor crash" do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions

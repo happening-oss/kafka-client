@@ -4,6 +4,8 @@ defmodule KafkaClient.AdminTest do
   import KafkaClient.Test.Helper
   alias KafkaClient.Admin
 
+  @moduletag :require_kafka
+
   setup do
     admin =
       start_supervised!(
@@ -15,14 +17,12 @@ defmodule KafkaClient.AdminTest do
     {:ok, admin: admin}
   end
 
-  @tag :require_kafka
   test "list_topics", ctx do
     topic = new_test_topic()
     recreate_topics([topic])
     assert topic in Admin.list_topics(ctx.admin)
   end
 
-  @tag :require_kafka
   test "describe_topics", ctx do
     assert {:error, error} = Admin.describe_topics(ctx.admin, ["unknown_topic"])
     assert error == "This server does not host this topic-partition."
@@ -36,7 +36,6 @@ defmodule KafkaClient.AdminTest do
     assert topics == %{topic1 => [0], topic2 => [0, 1]}
   end
 
-  @tag :require_kafka
   test "describe_topics_config", ctx do
     assert {:error, error} = Admin.describe_topics_config(ctx.admin, ["unknown_topic"])
     assert error == ""
@@ -54,7 +53,6 @@ defmodule KafkaClient.AdminTest do
     assert %{is_default: true, name: "retention.ms", value: "25920000000"} in topics[topic1]
   end
 
-  @tag :require_kafka
   test "list_end_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
     assert error == "This server does not host this topic-partition."
@@ -78,7 +76,6 @@ defmodule KafkaClient.AdminTest do
            }
   end
 
-  @tag :require_kafka
   test "list_earliest_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
     assert error == "This server does not host this topic-partition."
@@ -97,7 +94,6 @@ defmodule KafkaClient.AdminTest do
            }
   end
 
-  @tag :require_kafka
   test "list_consumer_groups", ctx do
     consumer = start_consumer!()
     group_id = consumer.group_id
@@ -111,7 +107,6 @@ defmodule KafkaClient.AdminTest do
     assert {group_id, :empty} in consumer_groups
   end
 
-  @tag :require_kafka
   test "delete_consumer_groups", ctx do
     consumer_1 = start_consumer!()
     group_id_1 = consumer_1.group_id
@@ -132,21 +127,6 @@ defmodule KafkaClient.AdminTest do
     refute Enum.any?(consumer_groups, fn {group_id, _} -> group_id == group_id_2 end)
   end
 
-  @tag :require_kafka
-  test "describe_consumer_groups", ctx do
-    consumer = start_consumer!()
-    group_id = consumer.group_id
-
-    {:ok, consumer_groups} = Admin.describe_consumer_groups(ctx.admin, [consumer.group_id])
-
-    assert consumer_groups[group_id].state == :stable
-    KafkaClient.Consumer.stop(consumer.pid)
-
-    {:ok, consumer_groups} = Admin.describe_consumer_groups(ctx.admin, [consumer.group_id])
-    assert %{group_id => %{members: [], state: :empty}} == consumer_groups
-  end
-
-  @tag :require_kafka
   test "list_consumer_group_offsets", ctx do
     consumer = start_consumer!()
     [topic] = consumer.subscriptions
@@ -164,7 +144,6 @@ defmodule KafkaClient.AdminTest do
     assert committed == %{{topic, 0} => last_processed_offset_partition_0 + 1, {topic, 1} => nil}
   end
 
-  @tag :require_kafka
   test "stop", ctx do
     mref = Process.monitor(ctx.admin)
     Admin.stop(ctx.admin)
