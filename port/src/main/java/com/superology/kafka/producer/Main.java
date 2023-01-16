@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.header.Header;
 
 import com.ericsson.otp.erlang.*;
@@ -16,6 +17,7 @@ public class Main implements Port {
   }
 
   private Map<String, Handler> dispatchMap = Map.ofEntries(
+      Map.entry("partitions_for", this::partitionsFor),
       Map.entry("metrics", this::metrics),
       Map.entry("stop", this::stop),
       Map.entry("send", this::send));
@@ -54,6 +56,28 @@ public class Main implements Port {
             return Erlang.mapEntry(new OtpErlangBinary(entry.getKey().name().getBytes()), value);
           });
       response = Erlang.ok(map);
+    } catch (Exception e) {
+      response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+    }
+
+    output.emitCallResponse(command, response);
+
+    return null;
+  }
+
+  private Integer partitionsFor(Producer producer, Port.Command command, Output output)
+      throws InterruptedException, KafkaException {
+    @SuppressWarnings("unchecked")
+    var topic = (String) command.args()[0];
+
+    OtpErlangObject response;
+    try {
+      var list = Erlang.toList(
+          producer.partitionsFor(topic),
+          entry -> {
+            return new OtpErlangInt(entry.partition());
+          });
+      response = Erlang.ok(list);
     } catch (Exception e) {
       response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
     }

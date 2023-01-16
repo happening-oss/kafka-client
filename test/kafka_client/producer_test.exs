@@ -77,4 +77,15 @@ defmodule KafkaClient.ProducerTest do
 
     assert is_map(metrics)
   end
+
+  @tag :partitions_for
+  test "partitions_for" do
+    [topic] = start_consumer!().subscriptions
+
+    {:ok, producer} = Producer.start_link(servers: servers())
+    {:ok, partitions} = Producer.partitions_for(producer, topic)
+    :ok = Producer.stop(producer)
+
+    assert(Enum.sort(partitions) == [0, 1])
+  end
 end

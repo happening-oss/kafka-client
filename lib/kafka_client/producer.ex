@@ -218,6 +218,14 @@ defmodule KafkaClient.Producer do
     GenPort.call(server, :metrics)
   end
 
+  @doc """
+    Get the partition metadata for the given topic. Array of tuples {partition_id, leader is returned}
+  """
+  @spec partitions_for(GenServer.server(), binary()) :: [KafkaClient.partition()]
+  def partitions_for(server, topic) do
+    GenPort.call(server, :partitions_for, [topic])
+  end
+
   @impl GenServer
   def init(params) do
     {:ok, %{callbacks: %{}, next_ref: 0, producer_params: params, buffer_size: 0}}
