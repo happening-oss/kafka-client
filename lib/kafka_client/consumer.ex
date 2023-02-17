@@ -173,6 +173,12 @@ defmodule KafkaClient.Consumer do
     {:noreply, state}
   end
 
+  @impl GenServer
+  def handle_info(msg, state) do
+    Logger.warn("Unrecognized handle_info message: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
   @impl Parent.GenServer
   def handle_stopped_children(children, state) do
     crashed_children = Map.keys(children)
