@@ -9,14 +9,20 @@ defmodule KafkaClient.Admin do
   use KafkaClient.GenPort
   alias KafkaClient.GenPort
 
-  @spec start_link(servers: String.t(), name: GenServer.name()) :: {:ok, pid}
+  @spec start_link(servers: String.t(), name: GenServer.name(), admin_params: map()) :: {:ok, pid}
   def start_link(opts) do
+    servers = Keyword.fetch!(opts, :servers)
+    name = Keyword.get(opts, :name)
+    java_opts = Keyword.get(opts, :admin_params, %{})
+
+    startup_options = Map.merge(%{"bootstrap.servers" => Enum.join(servers, ",")}, java_opts)
+
     GenPort.start_link(
       __MODULE__,
       nil,
       "admin.Main",
-      [%{"bootstrap.servers" => opts |> Keyword.fetch!(:servers) |> Enum.join(",")}],
-      Keyword.take(opts, ~w/name/a)
+      [startup_options],
+      name: name
     )
   end
 
