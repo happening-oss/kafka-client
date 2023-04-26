@@ -87,7 +87,10 @@ final class Backpressure {
     }
 
     public void recordPolled(ConsumerRecord<byte[], byte[]> record) {
-      var messageSize = record.value().length;
+      var messageSize = 0;
+      if (record.value() != null){
+        messageSize = record.value().length;
+      }
       messageSizes.add(messageSize);
       totalBytes += messageSize;
     }
