@@ -29,7 +29,7 @@ public class Main implements Port, ConsumerRebalanceListener {
   private Output output;
   private Commits commits;
   private Backpressure backpressure;
-  private HashSet<ConsumerPosition> endOffsets;
+  private HashMap<TopicPartition, Long> endOffsets;
   private boolean isAnonymous;
 
   private Map<String, Handler> dispatchMap = Map.ofEntries(
@@ -122,7 +122,11 @@ public class Main implements Port, ConsumerRebalanceListener {
     backpressure.recordProcessed(ack.partition());
     if (isAnonymous) {
       if (endOffsets != null) {
-        endOffsets.remove(new ConsumerPosition(ack.partition(), ack.offset() + 1));
+
+        var endOffset = this.endOffsets.get(ack.partition);
+        if (endOffset != null && endOffset - 1 <= ack.offset())
+          this.endOffsets.remove(ack.partition());
+
         maybeEmitCaughtUp();
       }
     } else
@@ -170,7 +174,7 @@ public class Main implements Port, ConsumerRebalanceListener {
     // We'll also store the end offsets of all assigned partitions. This
     // allows us to fire the "caught_up" notification, issued after all the
     // records, existing at the time of the assignment, are processed.
-    this.endOffsets = new HashSet<>();
+    this.endOffsets = new HashMap<>();
 
     // For partitions that have no records because of retention, we have to
     // detect if beginning offset is different to end offset because ack will
@@ -179,7 +183,7 @@ public class Main implements Port, ConsumerRebalanceListener {
 
     for (var entry : consumer.endOffsets(assignments).entrySet()) {
       if (entry.getValue() > 0 && beginningOffsets.get(entry.getKey()) != entry.getValue())
-        this.endOffsets.add(new ConsumerPosition(entry.getKey(), entry.getValue()));
+        this.endOffsets.put(entry.getKey(), entry.getValue());
     }
 
     maybeEmitCaughtUp();
