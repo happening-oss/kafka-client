@@ -59,16 +59,35 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
 
   defp loop(parent, handler) do
     case next_message(parent) do
-      :drain -> exit(:normal)
-      {:EXIT, ^parent, reason} -> exit(reason)
-      {:process_record, record} -> handle_record(record, handler)
-      other -> Logger.warn("unknown message: #{inspect(other)}")
+      {:process_record, record} ->
+        # the batch consists of all the records currently residing in the mailbox
+        # TODO: add support for max batch size
+        batch = [record | records_in_mailbox(parent)]
+        handle_records(batch, handler)
+
+      other ->
+        Logger.warn("unknown message: #{inspect(other)}")
     end
 
     loop(parent, handler)
   end
 
-  defp next_message(parent) do
+  defp records_in_mailbox(parent) do
+    # takes all records in the mailbox
+    case next_message(parent, _timeout = 0) do
+      {:process_record, record} ->
+        [record | records_in_mailbox(parent)]
+
+      nil ->
+        []
+
+      other ->
+        Logger.warn("unknown message: #{inspect(other)}")
+        []
+    end
+  end
+
+  defp next_message(parent, timeout \\ :infinity) do
     # Implements a so called "select receive" pattern, placing higher priority on drain and parent
     # exit messages. This allows us to first handle the high prio messages, even though they were
     # placed into the mailbox after the regular messages. This is the reason why we can't use
@@ -80,25 +99,39 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
       {:EXIT, ^parent, _reason} = parent_exit -> parent_exit
     after
       # no high prio message in the mailbox, fetch the next message
-      0 -> receive(do: (message -> message))
+      0 ->
+        receive do
+          message -> message
+        after
+          timeout -> nil
+        end
+    end
+    |> case do
+      :drain -> exit(:normal)
+      {:EXIT, ^parent, reason} -> exit(reason)
+      other -> other
     end
   end
 
-  defp handle_record(record, handler) do
-    Poller.started_processing(record)
+  defp handle_records(records, handler) do
+    Enum.each(records, &Poller.started_processing/1)
 
     try do
-      :telemetry.span(
-        [:kafka_client, :consumer, :record, :handler],
-        %{},
-        fn -> {handler.({:record, record}), Poller.telemetry_meta(record)} end
-      )
+      handler.({:records, records})
+
+      # TODO: fix telemetry later
+      # :telemetry.span(
+      #   [:kafka_client, :consumer, :record, :handler],
+      #   %{},
+      #   fn -> {handler.({:record, record}), Poller.telemetry_meta(record)} end
+      # )
     catch
       kind, payload when kind != :exit ->
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    Poller.ack(record)
+    # TODO: send all acks at once
+    Enum.each(records, &Poller.ack/1)
 
     {:noreply, handler}
   end
