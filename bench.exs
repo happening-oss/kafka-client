@@ -76,7 +76,7 @@ IO.puts("produce throughput: #{round(num_messages * 1_000_000 / produce_time)} m
     subscriptions: [topic],
     handler: fn
       {:assigned, _partitions} -> send(bench_pid, :consuming)
-      {:record, _record} -> :ok
+      {:records, _records} -> :ok
     end
   )
 
