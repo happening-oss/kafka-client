@@ -5,8 +5,14 @@ defmodule KafkaClient.Consumer.AnonymousTest do
   @moduletag :require_kafka
 
   test "multiple consumers" do
-    subscriptions = start_consumer!(group_id: nil, num_topics: 2).subscriptions
-    start_consumer!(group_id: nil, subscriptions: subscriptions, recreate_topics?: false)
+    subscriptions = start_consumer!(group_id: nil, num_topics: 2, max_batch_size: 1).subscriptions
+
+    start_consumer!(
+      group_id: nil,
+      subscriptions: subscriptions,
+      recreate_topics?: false,
+      max_batch_size: 1
+    )
 
     [topic1, topic2] = subscriptions
 
@@ -14,14 +20,14 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     produced2 = sync_produce!(topic1, partition: 1)
     produced3 = sync_produce!(topic2, partition: 0)
 
-    assert assert_processing(topic1, 0).offset == produced1.offset
-    assert assert_processing(topic1, 0).offset == produced1.offset
+    assert hd(assert_processing(topic1, 0).records).offset == produced1.offset
+    assert hd(assert_processing(topic1, 0).records).offset == produced1.offset
 
-    assert assert_processing(topic1, 1).offset == produced2.offset
-    assert assert_processing(topic1, 1).offset == produced2.offset
+    assert hd(assert_processing(topic1, 1).records).offset == produced2.offset
+    assert hd(assert_processing(topic1, 1).records).offset == produced2.offset
 
-    assert assert_processing(topic2, 0).offset == produced3.offset
-    assert assert_processing(topic2, 0).offset == produced3.offset
+    assert hd(assert_processing(topic2, 0).records).offset == produced3.offset
+    assert hd(assert_processing(topic2, 0).records).offset == produced3.offset
 
     refute_processing(topic1, 0)
     refute_processing(topic1, 1)
@@ -29,14 +35,14 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     start_consumer!(group_id: nil, subscriptions: subscriptions, recreate_topics?: false)
 
-    assert assert_processing(topic1, 0).offset == produced1.offset
-    assert assert_processing(topic1, 1).offset == produced2.offset
-    assert assert_processing(topic2, 0).offset == produced3.offset
+    assert hd(assert_processing(topic1, 0).records).offset == produced1.offset
+    assert hd(assert_processing(topic1, 1).records).offset == produced2.offset
+    assert hd(assert_processing(topic2, 0).records).offset == produced3.offset
   end
 
   test "caught up event" do
     # if the topics are empty, consumer should immediately get a caught-up notification
-    consumer1 = start_consumer!(group_id: nil, num_topics: 2)
+    consumer1 = start_consumer!(group_id: nil, num_topics: 2, max_batch_size: 1)
     assert_caught_up()
 
     # produce some messages
@@ -56,7 +62,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     ]
 
     # check that caught-up is sent only once
-    Enum.each(produced, &process_next_record!(&1.topic, &1.partition))
+    Enum.each(produced, &process_next_batch!(&1.topic, &1.partition))
     refute_caught_up()
 
     # stop consumer and flush all notifications sent by it
@@ -67,7 +73,8 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     start_consumer!(
       group_id: nil,
       subscriptions: consumer1.subscriptions,
-      recreate_topics?: false
+      recreate_topics?: false,
+      max_batch_size: 1
     )
 
     # wait until all the records are polled
@@ -88,15 +95,15 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     # process almost all previously produced records
     {almost_all_records, [final_record]} = Enum.split(produced, -1)
-    Enum.each(almost_all_records, &process_next_record!(&1.topic, &1.partition))
+    Enum.each(almost_all_records, &process_next_batch!(&1.topic, &1.partition))
     refute_caught_up()
 
     # caught-up notification should be sent after the last previously produced record is processed
-    process_next_record!(final_record.topic, final_record.partition)
+    process_next_batch!(final_record.topic, final_record.partition)
     assert_caught_up()
 
     # subsequent processing shouldn't trigger new caught-up notifications
-    Enum.each(produced_after_connect, &process_next_record!(&1.topic, &1.partition))
+    Enum.each(produced_after_connect, &process_next_batch!(&1.topic, &1.partition))
     refute_caught_up()
   end
 
@@ -136,8 +143,8 @@ defmodule KafkaClient.Consumer.AnonymousTest do
       recreate_topics?: false
     )
 
-    processing = assert_processing(topic, 0)
-    assert processing.offset == record2.offset
+    [first_processing | _] = assert_processing(topic, 0).records
+    assert first_processing.offset == record2.offset
   end
 
   test "initial position via timestamp" do
@@ -155,8 +162,8 @@ defmodule KafkaClient.Consumer.AnonymousTest do
       recreate_topics?: false
     )
 
-    processing = assert_processing(topic, 0)
-    assert processing.offset == record2.offset
+    [first_processing | _] = assert_processing(topic, 0).records
+    assert first_processing.offset == record2.offset
   end
 
   defp flush_messages do
