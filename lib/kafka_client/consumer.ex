@@ -19,6 +19,7 @@ defmodule KafkaClient.Consumer do
   alias KafkaClient.Consumer.{PartitionProcessor, Poller}
 
   @type handler :: (Poller.notification() -> any)
+  @type batch_size :: pos_integer() | :infinity
 
   @doc """
   Starts the consumer process.
@@ -120,6 +121,7 @@ defmodule KafkaClient.Consumer do
   @spec start_link([
           Poller.option()
           | {:handler, handler}
+          | {:max_batch_size, batch_size}
           | {:drain, non_neg_integer}
           | {:name, GenServer.name()}
         ]) ::
@@ -146,6 +148,7 @@ defmodule KafkaClient.Consumer do
   @impl GenServer
   def init(opts) do
     {handler, opts} = Keyword.pop!(opts, :handler)
+    {max_batch_size, opts} = Keyword.pop(opts, :max_batch_size, :infinity)
     {drain, opts} = Keyword.pop(opts, :drain, :timer.seconds(5))
 
     {:ok, poller} =
@@ -156,7 +159,7 @@ defmodule KafkaClient.Consumer do
         ephemeral?: true
       )
 
-    {:ok, %{handler: handler, poller: poller, drain: drain}}
+    {:ok, %{handler: handler, poller: poller, drain: drain, max_batch_size: max_batch_size}}
   end
 
   @impl GenServer
@@ -185,7 +188,7 @@ defmodule KafkaClient.Consumer do
   end
 
   defp handle_poller_message({:assigned, partitions} = event, state) do
-    start_processors(state.handler, partitions)
+    start_processors(state.handler, state.max_batch_size, partitions)
     state.handler.(event)
   end
 
@@ -208,13 +211,13 @@ defmodule KafkaClient.Consumer do
   defp handle_poller_message(message, state),
     do: state.handler.(message)
 
-  defp start_processors(handler, partitions) do
+  defp start_processors(handler, max_batch_size, partitions) do
     Enum.each(
       partitions,
       fn {topic, partition} ->
         {:ok, _pid} =
           Parent.start_child(
-            {PartitionProcessor, handler},
+            {PartitionProcessor, {handler, max_batch_size}},
             id: {:processor, {topic, partition}},
             restart: :temporary,
             ephemeral?: true
