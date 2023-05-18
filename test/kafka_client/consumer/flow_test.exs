@@ -108,6 +108,9 @@ defmodule KafkaClient.Consumer.FlowTest do
     # await for the notification
     assert_receive {:unassigned, _partitions}, :timer.seconds(10)
 
+    # sleep a bit more to let the rebalance finish (eliminates RebalanceInProgressException)
+    Process.sleep(:timer.seconds(1))
+
     # check that topic 0 processor (consumer 1) is still running
     assert Process.alive?(topic0_batch_before_rebalance.processor)
     resume_processing(topic0_batch_before_rebalance)
