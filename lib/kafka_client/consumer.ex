@@ -18,8 +18,14 @@ defmodule KafkaClient.Consumer do
   require Logger
   alias KafkaClient.Consumer.{PartitionProcessor, Poller}
 
-  @type handler :: (Poller.notification() -> any)
+  @type handler :: (notification -> any)
   @type batch_size :: pos_integer() | :infinity
+
+  @type notification ::
+          {:assigned, [KafkaClient.topic_partition()]}
+          | {:unassigned, [KafkaClient.topic_partition()]}
+          | :caught_up
+          | {:records, [Poller.record()]}
 
   @doc """
   Starts the consumer process.
@@ -40,6 +46,8 @@ defmodule KafkaClient.Consumer do
         poll_duration: 10,
         commit_interval: :timer.seconds(5),
 
+        max_batch_size: 10,
+
         # These parameters are passed directly to the Java client.
         # See https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html
         consumer_params: %{
@@ -50,6 +58,13 @@ defmodule KafkaClient.Consumer do
         handler: &handle_message/1
       )
 
+  ## Batching
+
+  The handler receives a batch of records, containing all messages currently present in
+  the process mailbox. The maximum size of the batch can be configured with the `:max_batch_size`
+  option, which is by default set to `:infinity`. If you want to process messages one by one, set
+  the maximum size to 1.
+
   ## Concurrency consideration
 
   Messages on the same partition are processed sequentially. Messages on different partitions are
@@ -57,29 +72,29 @@ defmodule KafkaClient.Consumer do
   assigned partition. This process is started when the partition is assigned to the consumer, and
   it is terminated if the partition is unassigned.
 
-  If the handler is invoked with the argument `{:record, record}`, the invocation takes place
+  If the handler is invoked with the argument `{:records, records}`, the invocation takes place
   inside the partition process. All other handler invocations take place inside the main consumer
   process (which is the parent of the partitions processes). Avoid long processing, exceptions, and
   exits from these other handler invocations, because they might block the consumer or take it down
-  completely. The `{:record, record}` handler invocation may run arbitrarily long, and it may
+  completely. The `{:records, records}` handler invocation may run arbitrarily long, and it may
   safely throw an exception (see [Processing guarantees](#processing-guarantees)).
 
   ## Processing guarantees
 
   The consumer provides at-least-once processing guarantees, i.e. it is guaranteed that the
-  `handler({:record, record})` invocation will finish at least once for each record. After the
-  handler function finishes, the consumer will commit it to Kafka. This will also happen if the
-  handler function throws an exception. This is done via `Poller.ack/1`.
+  `handler({:records, records})` invocation will finish at least once for each record. After the
+  handler function finishes, the consumer will commit the records to Kafka. This will also happen
+  if the handler function throws an exception. This is done via `Poller.ack/1`.
 
-  If you wish to handle the exception yourself, e.g. by retrying or republishing the message, you
+  If you wish to handle the exception yourself, e.g. by retrying or republishing the records, you
   must catch the exception inside the handler function.
 
-  If you wish to commit the record before it is processed, you can asynchronously send the record
-  payload to another process, e.g. via `send` or `cast`, and then return from the handler function
+  If you wish to commit the records before they are processed, you can asynchronously send them to
+  another process, e.g. via `send` or `cast`, and then return from the handler function
   immediately. Alternatively, you can spawn another process to handle the message. This will change
-  the processing guarantees to at-most-once, since it is possible that a record is committed, but
-  never fully processed (e.g. the machine is taken down after the commits are flushed, but before
-  the handler finishes).
+  the processing guarantees to at-most-once, since it is possible that the records are committed,
+  but never fully processed (e.g. the machine is taken down after the commits are flushed, but
+  before the handler finishes).
 
   If the handler is spawning processes, they must be started somewhere else in the application
   supervision tree, not as direct children of the process where the handler is running (the
