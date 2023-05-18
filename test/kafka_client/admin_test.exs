@@ -134,7 +134,7 @@ defmodule KafkaClient.AdminTest do
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
-    last_processed_offset_partition_0 = process_next_record!(topic, 0).offset
+    last_processed_offset_partition_0 = hd(process_next_batch!(topic, 0).records).offset
 
     stop_supervised!(consumer.child_id)
 
