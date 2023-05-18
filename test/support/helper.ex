@@ -51,7 +51,7 @@ defmodule KafkaClient.Test.Helper do
         commit_interval: 50,
         consumer_params: consumer_params,
         drain: Keyword.get(opts, :drain, 0)
-      ] ++ Keyword.take(opts, ~w/name/a)
+      ] ++ Keyword.take(opts, ~w/name max_batch_size/a)
 
     consumer_pid =
       ExUnit.Callbacks.start_supervised!(
@@ -99,15 +99,15 @@ defmodule KafkaClient.Test.Helper do
     result
   end
 
-  def resume_processing(record) do
-    send(record.pid, :consume)
-    %{topic: topic, partition: partition, offset: offset} = record
-    assert_receive {:processed, ^topic, ^partition, ^offset}
+  def resume_processing(batch) do
+    batch_id = batch.id
+    send(batch.processor, {:consume, batch_id})
+    assert_receive {:processed, ^batch_id}
     :ok
   end
 
-  def crash_processing(record, reason) do
-    send(record.pid, {:crash, reason})
+  def crash_processing(batch, reason) do
+    send(batch.processor, {:crash, reason})
     :ok
   end
 
@@ -122,10 +122,10 @@ defmodule KafkaClient.Test.Helper do
   end
 
   def assert_processing(topic, partition) do
-    assert_receive {:processing, %{topic: ^topic, partition: ^partition} = record},
+    assert_receive {:processing, %{topic: ^topic, partition: ^partition} = batch},
                    :timer.seconds(10)
 
-    record
+    batch
   end
 
   def refute_processing(topic, partition) do
@@ -135,10 +135,10 @@ defmodule KafkaClient.Test.Helper do
   def assert_caught_up, do: assert_receive(:caught_up, :timer.seconds(10))
   def refute_caught_up, do: refute_receive(:caught_up, :timer.seconds(1))
 
-  def process_next_record!(topic, partition) do
-    record = assert_processing(topic, partition)
-    resume_processing(record)
-    record
+  def process_next_batch!(topic, partition) do
+    batch = assert_processing(topic, partition)
+    resume_processing(batch)
+    batch
   end
 
   def poller(consumer) do
@@ -231,15 +231,25 @@ defmodule KafkaClient.Test.Helper do
 
   defp handle_consumer_event(:caught_up, test_pid), do: send(test_pid, :caught_up)
 
-  defp handle_consumer_event({:record, record}, test_pid) do
-    send(test_pid, {:processing, Map.put(record, :pid, self())})
+  defp handle_consumer_event({:records, records}, test_pid) do
+    batch_id = make_ref()
+
+    batch = %{
+      id: batch_id,
+      topic: hd(records).topic,
+      partition: hd(records).partition,
+      records: records,
+      processor: self()
+    }
+
+    send(test_pid, {:processing, batch})
 
     receive do
-      :consume -> :ok
+      {:consume, ^batch_id} -> :ok
       {:crash, reason} -> raise reason
     end
 
-    send(test_pid, {:processed, record.topic, record.partition, record.offset})
+    send(test_pid, {:processed, batch_id})
   end
 
   defp brokers, do: [{"localhost", 9092}]
