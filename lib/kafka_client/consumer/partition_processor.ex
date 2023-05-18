@@ -132,8 +132,7 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    # TODO: send all acks at once
-    Enum.each(records, &Poller.ack/1)
+    Poller.ack(records)
 
     {:noreply, handler}
   end

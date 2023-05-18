@@ -117,20 +117,25 @@ public class Main implements Port, ConsumerRebalanceListener {
   }
 
   private Integer ack(Consumer consumer, Port.Command command) throws InterruptedException {
-    var ack = new ConsumerPosition(toTopicPartition(command.args()), toLong(command.args()[2]));
+    for (@SuppressWarnings("unchecked")
+    var record : (Iterable<List<Object>>) command.args()[0]) {
+      var array = record.toArray();
+      var ack = new ConsumerPosition(toTopicPartition(array), toLong(array[2]));
 
-    backpressure.recordProcessed(ack.partition());
-    if (isAnonymous) {
-      if (endOffsets != null) {
+      backpressure.recordProcessed(ack.partition());
 
-        var endOffset = this.endOffsets.get(ack.partition);
-        if (endOffset != null && endOffset - 1 <= ack.offset())
-          this.endOffsets.remove(ack.partition());
+      if (isAnonymous) {
+        if (endOffsets != null) {
 
-        maybeEmitCaughtUp();
-      }
-    } else
-      commits.add(ack.partition(), ack.offset());
+          var endOffset = this.endOffsets.get(ack.partition);
+          if (endOffset != null && endOffset - 1 <= ack.offset())
+            this.endOffsets.remove(ack.partition());
+
+          maybeEmitCaughtUp();
+        }
+      } else
+        commits.add(ack.partition(), ack.offset());
+    }
 
     return null;
   }
