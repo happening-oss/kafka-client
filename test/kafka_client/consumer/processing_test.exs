@@ -31,6 +31,32 @@ defmodule KafkaClient.Consumer.ProcessingTest do
     assert record2.value == produced2.value
   end
 
+  test "batch size" do
+    consumer = start_consumer!(max_batch_size: 3)
+    [topic] = consumer.subscriptions
+
+    sync_produce!(topic, partition: 0)
+
+    # as soon as something is produced, the first batch of size 1 starts processing
+    batch1 = assert_processing(topic, 0)
+    assert length(batch1.records) == 1
+
+    # produce some more records while the 1st batch is still processing
+    produced_offsets = Enum.map(1..8, fn _ -> sync_produce!(topic, partition: 0).offset end)
+    Enum.each(produced_offsets, &assert_polled(topic, 0, &1))
+
+    # finish batch1
+    resume_processing(batch1)
+
+    # 8 records are produced and max_batch_size == 3 => we expect 3 batches of sizes [3, 3, 2]
+    batches = Enum.map(1..3, fn _ -> process_next_batch!(topic, 0) end)
+    assert Enum.map(batches, &length(&1.records)) == [3, 3, 2]
+
+    # check that the messages are properly ordered
+    consumed_offsets = for batch <- batches, record <- batch.records, do: record.offset
+    assert consumed_offsets == produced_offsets
+  end
+
   test "concurrent processing" do
     consumer = start_consumer!(num_topics: 2)
     [topic1, topic2] = consumer.subscriptions
