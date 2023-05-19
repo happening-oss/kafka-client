@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  title: Kafka Client
+  name: kafka-client
+  namespace: elixir-libs
+  annotations:
+    github.com/project-slug: superology-backend/libs.kafka-client
+spec:
+  type: library
+  lifecycle: production
+  owner: platform
+  domain: tech
+  system: elixir-libs
