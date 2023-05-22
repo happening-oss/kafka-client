@@ -2,7 +2,7 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   title: Kafka Client
-  name: "elixir-libs_kafka-client"
+  name: elixir-libs_kafka-client
   annotations:
     github.com/project-slug: superology-backend/libs.kafka-client
 spec:
@@ -11,9 +11,3 @@ spec:
   owner: platform
   domain: tech
   system: elixir-libs
-  dependsOn:
-    - component:elixir-libs-freetoplay_{:credo "~> 1.6" only: [:dev :test]}
-    - component:elixir-libs-freetoplay_{:dialyxir "~> 1.2" only: [:dev :test] runtime: false}
-    - component:elixir-libs-freetoplay_{:parent "~> 0.12"}
-    - component:elixir-libs-freetoplay_{:statistex "~> 1.0" only: [:dev :test]}
-    - component:elixir-libs-freetoplay_{:telemetry "~> 1.0"}
