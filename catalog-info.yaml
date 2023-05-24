@@ -10,4 +10,10 @@ spec:
   lifecycle: production
   owner: platform
   domain: tech
-  system: elixir-libs
+  system: tech_elixir-libs
+  dependsOn:
+    - component:elixir-libs-freetoplay_{:credo "~> 1.6" only: [:dev :test]}
+    - component:elixir-libs-freetoplay_{:dialyxir "~> 1.2" only: [:dev :test] runtime: false}
+    - component:elixir-libs-freetoplay_{:parent "~> 0.12"}
+    - component:elixir-libs-freetoplay_{:statistex "~> 1.0" only: [:dev :test]}
+    - component:elixir-libs-freetoplay_{:telemetry "~> 1.0"}
