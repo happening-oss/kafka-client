@@ -182,7 +182,7 @@ public class Main implements Port, ConsumerRebalanceListener {
     var beginningOffsets = consumer.beginningOffsets(assignments);
 
     for (var entry : consumer.endOffsets(assignments).entrySet()) {
-      if (entry.getValue() > 0 && beginningOffsets.get(entry.getKey()) != entry.getValue())
+      if (entry.getValue() > 0 && !beginningOffsets.get(entry.getKey()).equals(entry.getValue()))
         this.endOffsets.put(entry.getKey(), entry.getValue());
     }
 
