@@ -291,6 +291,7 @@ defmodule KafkaClient.Consumer.Poller do
 
   defp full_subscription(topic) when is_binary(topic), do: full_subscription({topic, -1})
   defp full_subscription({topic, partition}), do: full_subscription({topic, partition, nil})
+  defp full_subscription({topic, :all, position}), do: full_subscription({topic, -1, position})
 
   defp full_subscription({topic, partition, position}) do
     {position_type, position} =

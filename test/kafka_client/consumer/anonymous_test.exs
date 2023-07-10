@@ -140,6 +140,32 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     assert processing.offset == record2.offset
   end
 
+  test "initial position via offset for all partitions" do
+    topic = new_test_topic()
+
+    recreate_topics([topic])
+
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+    sync_produce!(topic, partition: 1)
+
+    start_consumer!(
+      group_id: nil,
+      subscriptions: [{topic, :all, {:offset, 1}}],
+      recreate_topics?: false
+    )
+
+    processing = assert_processing(topic, 0)
+    assert processing.offset == 1
+
+    processing2 = assert_processing(topic, 1)
+    assert processing2.offset == 1
+  end
+
   test "initial position via timestamp" do
     topic = new_test_topic()
 
@@ -157,6 +183,79 @@ defmodule KafkaClient.Consumer.AnonymousTest do
 
     processing = assert_processing(topic, 0)
     assert processing.offset == record2.offset
+  end
+
+  test "initial position via timestamp for all paritions" do
+    topic = new_test_topic()
+
+    recreate_topics([topic])
+
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 0)
+    sync_produce!(topic, partition: 1)
+    latest_record = sync_produce!(topic, partition: 1)
+
+    # with +1, we will skip all records produced so far
+    timestamp = latest_record.timestamp + 1
+
+    record1 = sync_produce!(topic, partition: 0)
+    record2 = sync_produce!(topic, partition: 1)
+
+    start_consumer!(
+      group_id: nil,
+      subscriptions: [{topic, :all, {:timestamp, timestamp}}],
+      recreate_topics?: false
+    )
+
+    processing = assert_processing(topic, 0)
+    assert processing.offset == record1.offset
+
+    processing2 = assert_processing(topic, 1)
+    assert processing2.offset == record2.offset
+  end
+
+  test "initial position via timestamp for all paritions mixed" do
+    topic1 = new_test_topic()
+    topic2 = new_test_topic()
+
+    recreate_topics([topic1, topic2])
+
+    sync_produce!(topic1, partition: 0)
+    sync_produce!(topic1, partition: 0)
+    sync_produce!(topic1, partition: 1)
+    latest_record = sync_produce!(topic1, partition: 1)
+
+    # with +1, we will skip all records produced so far
+    timestamp = latest_record.timestamp + 1
+
+    record1 = sync_produce!(topic1, partition: 0)
+    record2 = sync_produce!(topic1, partition: 1)
+
+    sync_produce!(topic2, partition: 0)
+    sync_produce!(topic2, partition: 0)
+    sync_produce!(topic2, partition: 1)
+    sync_produce!(topic2, partition: 1)
+
+    start_consumer!(
+      group_id: nil,
+      subscriptions: [
+        {topic1, :all, {:timestamp, timestamp}},
+        topic2
+      ],
+      recreate_topics?: false
+    )
+
+    processing_topic1_part_0 = assert_processing(topic1, 0)
+    assert processing_topic1_part_0.offset == record1.offset
+
+    processing_topic1_part1 = assert_processing(topic1, 1)
+    assert processing_topic1_part1.offset == record2.offset
+
+    processing_topic2_part0 = assert_processing(topic2, 0)
+    assert processing_topic2_part0.offset == 0
+
+    processing_topic2_part1 = assert_processing(topic2, 1)
+    assert processing_topic2_part1.offset == 0
   end
 
   defp flush_messages do

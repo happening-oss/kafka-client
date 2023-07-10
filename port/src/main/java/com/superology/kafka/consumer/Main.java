@@ -205,27 +205,55 @@ public class Main implements Port, ConsumerRebalanceListener {
   }
 
   private void seekToPositions(Consumer consumer, Collection<Subscription> subscriptions) {
+    var subscriptionsWithType = subscriptions.stream().filter(subscription -> subscription.type() != null).toList();
+    seekToOffsets(consumer, subscriptionsWithType.stream().filter(subscription -> subscription.type() == 0));
+    seekToTimestamps(consumer, subscriptionsWithType.stream().filter(subscription -> subscription.type() == 1));
+  }
+
+  private void seekToOffsets(Consumer consumer, Stream<Subscription> subscriptions) {
+    subscriptions.forEach(subscription -> {
+      if (subscription.partition().partition() >= 0) {
+          consumer.seek(subscription.partition(), subscription.position());
+      } else {
+          seekAllPartitionsToPosition(consumer, subscription);
+      }
+    });
+  }
+
+  private void seekAllPartitionsToPosition(Consumer consumer, Subscription subscription) {
+    consumer.partitionsFor(subscription.partition().topic())
+            .forEach(partitionInfo -> consumer.seek(toTopicPartition(partitionInfo), subscription.position()));
+  }
+
+  private void seekToTimestamps(Consumer consumer, Stream<Subscription> subscriptions) {
     var timestampsToSearch = new HashMap<TopicPartition, Long>();
 
-    for (var subscription : subscriptions) {
-      if (subscription.type() != null) {
-        switch (subscription.type()) {
-          case 0:
-            consumer.seek(subscription.partition(), subscription.position());
-            break;
-
-          case 1:
-            timestampsToSearch.put(subscription.partition(), subscription.position());
-            break;
-        }
+    subscriptions.forEach(subscription -> {
+      if (subscription.partition().partition() >= 0) {
+          timestampsToSearch.put(subscription.partition(), subscription.position());
+      } else {
+          addTimestampsForAllPartitions(consumer, timestampsToSearch, subscription);
       }
-    }
+    });
 
-    for (var positionEntry : consumer.offsetsForTimes(timestampsToSearch).entrySet()) {
-      if (positionEntry.getValue() != null)
-        consumer.seek(positionEntry.getKey(), positionEntry.getValue().offset());
-    }
+    consumer.offsetsForTimes(timestampsToSearch)
+            .forEach((topicPartition, offsetAndTimestamp) -> {
+              if (offsetAndTimestamp != null) {
+                  consumer.seek(topicPartition, offsetAndTimestamp.offset());
+              }
+            });
   }
+
+  private void addTimestampsForAllPartitions(Consumer consumer,
+                                             Map<TopicPartition, Long> timestampsToSearch,
+                                             Subscription subscription) {
+
+    consumer.partitionsFor(subscription.partition().topic())
+            .forEach(partitionInfo -> timestampsToSearch.put(
+                    toTopicPartition(partitionInfo),
+                    subscription.position()
+            ));
+}
 
   private void maybeEmitCaughtUp() throws InterruptedException {
     if (endOffsets.isEmpty()) {
@@ -291,6 +319,10 @@ public class Main implements Port, ConsumerRebalanceListener {
     var result = new Properties();
     result.putAll(map);
     return result;
+  }
+
+  private TopicPartition toTopicPartition(PartitionInfo partitionInfo) {
+    return new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
   }
 
   record Opts(Properties consumerProps, Collection<Subscription> subscriptions, Map<String, Object> pollerProps) {
