@@ -46,11 +46,18 @@ defmodule KafkaClient.AdminTest do
     recreate_topics([{topic1, 1}, {topic2, 2}])
 
     assert {:ok, topics} = Admin.describe_topics_config(ctx.admin, [topic1, topic2])
+    assert %{^topic1 => props1, ^topic2 => props2} = topics
 
-    assert map_size(topics) == 2
-    assert is_list(topics[topic1])
-    assert %{is_default: true, name: "cleanup.policy", value: "delete"} in topics[topic1]
-    assert %{is_default: true, name: "retention.ms", value: "25920000000"} in topics[topic1]
+    # We can't check the exact content of the returned list, because it may vary between different
+    # installations. So instead we check that the returned list is not empty, and we check the
+    # shape of each element.
+    for properties <- [props1, props2],
+        assert([_ | _] = properties),
+        property <- properties do
+      assert %{name: name, is_default: is_default, value: _} = property
+      assert is_binary(name) and name != ""
+      assert is_boolean(is_default)
+    end
   end
 
   test "list_end_offsets", ctx do
