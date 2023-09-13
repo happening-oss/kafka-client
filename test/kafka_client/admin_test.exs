@@ -102,12 +102,18 @@ defmodule KafkaClient.AdminTest do
   end
 
   test "list_consumer_groups", ctx do
-    consumer = start_consumer!()
+    topic = new_test_topic()
+    consumer = start_consumer!(subscriptions: [topic])
     group_id = consumer.group_id
 
     {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
     assert {group_id, :stable} in consumer_groups
 
+    # Before stopping the consumer we'll generate one message and make sure it's processed, and
+    # hence committed. As a result, there will be one committed offset for the given consumer
+    # group, which will prevent immediate auto-deletion of the topic.
+    partition = sync_produce!(topic).partition
+    process_next_batch!(topic, partition)
     KafkaClient.Consumer.stop(consumer.pid)
 
     {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
@@ -118,8 +124,15 @@ defmodule KafkaClient.AdminTest do
     consumer_1 = start_consumer!()
     group_id_1 = consumer_1.group_id
 
-    consumer_2 = start_consumer!()
+    topic = new_test_topic()
+    consumer_2 = start_consumer!(subscriptions: [topic])
     group_id_2 = consumer_2.group_id
+
+    # Before stopping the consumer we'll generate one message and make sure it's processed, and
+    # hence committed. As a result, there will be one committed offset for the given consumer
+    # group, which will prevent immediate auto-deletion of the topic.
+    partition = sync_produce!(topic).partition
+    process_next_batch!(topic, partition)
     KafkaClient.Consumer.stop(consumer_2.pid)
 
     {:ok, deleted_groups_result} =
