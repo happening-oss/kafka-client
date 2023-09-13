@@ -162,15 +162,15 @@ defmodule KafkaClient.Test.Helper do
     # The approach below has been chosen over `System.to_integer` to reduce the chance of a name
     # collision between two `mix test` session, which eliminates some weird race conditions if a
     # topic is deleted and then immediately recreated.
-    [
-      "kafka_client_test_topic",
+    <<
+      "kafka_client_test_topic_",
+
       # current time reduces the chance of a name collision between two `mix test` sessions
-      DateTime.utc_now() |> DateTime.to_unix(:microsecond) |> to_string(),
+      Base.url_encode64(<<DateTime.to_unix(DateTime.utc_now(), :microsecond)::64>>, padding: false)::binary,
 
       # randomness reduces the change of a name collision in a single `mix test` session
-      :crypto.strong_rand_bytes(4) |> Base.url_encode64(padding: false)
-    ]
-    |> Enum.join("_")
+      Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)::binary
+    >>
   end
 
   def recreate_topics(topics) do
