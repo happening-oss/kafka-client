@@ -60,10 +60,10 @@ defmodule KafkaClient.Consumer do
 
   ## Batching
 
-  The handler receives a batch of records, containing all messages currently present in
-  the process mailbox. The maximum size of the batch can be configured with the `:max_batch_size`
-  option, which is by default set to `:infinity`. If you want to process messages one by one, set
-  the maximum size to 1.
+  The handler receives a batch of records, containing all messages currently present in the process
+  mailbox. The maximum size of the batch can be configured with the `:max_batch_size` option, which
+  is by default set to `:infinity`. If you want to process messages one by one, set the maximum
+  size to 1.
 
   ## Concurrency consideration
 
@@ -82,9 +82,9 @@ defmodule KafkaClient.Consumer do
   ## Processing guarantees
 
   The consumer provides at-least-once processing guarantees, i.e. it is guaranteed that the
-  `handler({:records, records})` invocation will finish at least once for each record. After the
-  handler function finishes, the consumer will commit the records to Kafka. This will also happen
-  if the handler function throws an exception. This is done via `Poller.ack/1`.
+  `handler({:records, records})` invocation will finish at least once for each batch of records.
+  After the handler function finishes, the consumer will commit the records to Kafka. This will
+  also happen if the handler function throws an exception. This is done via `Poller.ack/1`.
 
   If you wish to handle the exception yourself, e.g. by retrying or republishing the records, you
   must catch the exception inside the handler function.
