@@ -129,9 +129,9 @@ defmodule KafkaClient.Consumer do
   In addition to telemetry events mentioned in the `Poller` docs, the consumer will emit the
   events for the handler invocation:
 
-    - `kafka_client.consumer.record.handler.start.duration`
-    - `kafka_client.consumer.record.handler.stop.duration`
-    - `kafka_client.consumer.record.handler.exception.duration`
+    - `kafka_client.consumer.records.handler.start.duration`
+    - `kafka_client.consumer.records.handler.stop.duration`
+    - `kafka_client.consumer.records.handler.exception.duration`
   """
   @spec start_link([
           Poller.option()

@@ -119,14 +119,14 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
     Enum.each(records, &Poller.started_processing/1)
 
     try do
-      handler.({:records, records})
-
-      # TODO: fix telemetry later
-      # :telemetry.span(
-      #   [:kafka_client, :consumer, :record, :handler],
-      #   %{},
-      #   fn -> {handler.({:record, record}), Poller.telemetry_meta(record)} end
-      # )
+      :telemetry.span(
+        [:kafka_client, :consumer, :records, :handler],
+        %{},
+        fn ->
+          record_metas = Enum.map(records, &Poller.telemetry_meta/1)
+          {handler.({:records, records}), %{records: record_metas}}
+        end
+      )
     catch
       kind, payload when kind != :exit ->
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
