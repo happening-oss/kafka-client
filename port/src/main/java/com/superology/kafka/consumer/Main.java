@@ -180,9 +180,8 @@ public class Main implements Port, ConsumerRebalanceListener {
     // difference between the current consumer position and the end offset
     // for a specific partition.
     for (var entry : consumer.endOffsets(assignments).entrySet()) {
-      if (entry.getValue() != consumer.position(entry.getKey())) {
+      if (entry.getValue() != consumer.position(entry.getKey()))
         this.endOffsets.put(entry.getKey(), entry.getValue());
-      }
     }
 
     maybeEmitCaughtUp();
