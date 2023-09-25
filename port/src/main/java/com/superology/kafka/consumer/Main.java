@@ -176,13 +176,11 @@ public class Main implements Port, ConsumerRebalanceListener {
     // records, existing at the time of the assignment, are processed.
     this.endOffsets = new HashMap<>();
 
-    // For partitions that have no records because of retention, we have to
-    // detect if beginning offset is different to end offset because ack will
-    // never happen, and caught-up event will never be emitted
-    var beginningOffsets = consumer.beginningOffsets(assignments);
-
+    // The caught up event should not be emitted as long as there is a
+    // difference between the current consumer position and the end offset
+    // for a specific partition.
     for (var entry : consumer.endOffsets(assignments).entrySet()) {
-      if (entry.getValue() > 0 && !beginningOffsets.get(entry.getKey()).equals(entry.getValue()))
+      if (entry.getValue() != consumer.position(entry.getKey()))
         this.endOffsets.put(entry.getKey(), entry.getValue());
     }
 
