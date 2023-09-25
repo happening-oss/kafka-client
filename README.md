@@ -58,7 +58,7 @@ KafkaClient.Consumer.start_link(
 
     # Invoked in separate process for different partitions.
     # Records on the same partition are processed manually.
-    {:record, record} -> ...
+    {:records, records} -> ...
   end
 )
 ```

@@ -46,11 +46,18 @@ defmodule KafkaClient.AdminTest do
     recreate_topics([{topic1, 1}, {topic2, 2}])
 
     assert {:ok, topics} = Admin.describe_topics_config(ctx.admin, [topic1, topic2])
+    assert %{^topic1 => props1, ^topic2 => props2} = topics
 
-    assert map_size(topics) == 2
-    assert is_list(topics[topic1])
-    assert %{is_default: true, name: "cleanup.policy", value: "delete"} in topics[topic1]
-    assert %{is_default: true, name: "retention.ms", value: "25920000000"} in topics[topic1]
+    # We can't check the exact content of the returned list, because it may vary between different
+    # installations. So instead we check that the returned list is not empty, and we check the
+    # shape of each element.
+    for properties <- [props1, props2],
+        assert([_ | _] = properties),
+        property <- properties do
+      assert %{name: name, is_default: is_default, value: _} = property
+      assert is_binary(name) and name != ""
+      assert is_boolean(is_default)
+    end
   end
 
   test "list_end_offsets", ctx do
@@ -95,12 +102,18 @@ defmodule KafkaClient.AdminTest do
   end
 
   test "list_consumer_groups", ctx do
-    consumer = start_consumer!()
+    topic = new_test_topic()
+    consumer = start_consumer!(subscriptions: [topic])
     group_id = consumer.group_id
 
     {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
     assert {group_id, :stable} in consumer_groups
 
+    # Before stopping the consumer we'll generate one message and make sure it's processed, and
+    # hence committed. As a result, there will be one committed offset for the given consumer
+    # group, which will prevent immediate auto-deletion of the topic.
+    partition = sync_produce!(topic).partition
+    process_next_batch!(topic, partition)
     KafkaClient.Consumer.stop(consumer.pid)
 
     {:ok, consumer_groups} = Admin.list_consumer_groups(ctx.admin)
@@ -111,8 +124,15 @@ defmodule KafkaClient.AdminTest do
     consumer_1 = start_consumer!()
     group_id_1 = consumer_1.group_id
 
-    consumer_2 = start_consumer!()
+    topic = new_test_topic()
+    consumer_2 = start_consumer!(subscriptions: [topic])
     group_id_2 = consumer_2.group_id
+
+    # Before stopping the consumer we'll generate one message and make sure it's processed, and
+    # hence committed. As a result, there will be one committed offset for the given consumer
+    # group, which will prevent immediate auto-deletion of the topic.
+    partition = sync_produce!(topic).partition
+    process_next_batch!(topic, partition)
     KafkaClient.Consumer.stop(consumer_2.pid)
 
     {:ok, deleted_groups_result} =
@@ -134,7 +154,7 @@ defmodule KafkaClient.AdminTest do
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
-    last_processed_offset_partition_0 = process_next_record!(topic, 0).offset
+    last_processed_offset_partition_0 = hd(process_next_batch!(topic, 0).records).offset
 
     stop_supervised!(consumer.child_id)
 

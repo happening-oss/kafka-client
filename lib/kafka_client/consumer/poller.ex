@@ -221,7 +221,7 @@ defmodule KafkaClient.Consumer.Poller do
   end
 
   @doc """
-  Informs the poller that the record has been processed.
+  Informs the poller that the records have been processed.
 
   An ack has a dual role: commits and backpressure.
 
@@ -235,10 +235,18 @@ defmodule KafkaClient.Consumer.Poller do
   Therefore, it is important to invoke this function for each record received, even if its
   processing resulted in an exception. For most consistent behaviour, it's best to invoke this
   function after the record has been fully processed.
+
+  This function accepts a single record as well as a list of records.
   """
-  @spec ack(record) :: :ok
-  def ack(record),
-    do: GenPort.command(record.port, :ack, [record.topic, record.partition, record.offset])
+  @spec ack(record | [record]) :: :ok
+  def ack([]), do: :ok
+
+  def ack(record_or_records) do
+    records = List.wrap(record_or_records)
+    port = hd(records).port
+    arg = Enum.map(records, &[&1.topic, &1.partition, &1.offset])
+    GenPort.command(port, :ack, [arg])
+  end
 
   @doc "Returns the record fields used as a meta in telemetry events."
   @spec telemetry_meta(record) :: %{atom => any}

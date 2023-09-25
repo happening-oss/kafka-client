@@ -14,22 +14,23 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
   # See `next_message/1` for details.
 
   require Logger
+  alias KafkaClient.Consumer
   alias KafkaClient.Consumer.Poller
 
-  @spec child_spec(KafkaClient.Consumer.handler()) :: Supervisor.child_spec()
-  def child_spec(handler) do
+  @spec child_spec({Consumer.handler(), Consumer.batch_size()}) :: Supervisor.child_spec()
+  def child_spec({handler, max_batch_size}) do
     %{
       id: __MODULE__,
-      start: {__MODULE__, :start_link, [handler]},
+      start: {__MODULE__, :start_link, [handler, max_batch_size]},
       type: :worker,
       # using brutal kill, because polite termination is supported via `drain/2`
       shutdown: :brutal_kill
     }
   end
 
-  @spec start_link(KafkaClient.Consumer.handler()) :: {:ok, pid}
-  def start_link(handler),
-    do: :proc_lib.start_link(__MODULE__, :init, [self(), handler])
+  @spec start_link(Consumer.handler(), Consumer.batch_size()) :: {:ok, pid}
+  def start_link(handler, max_batch_size),
+    do: :proc_lib.start_link(__MODULE__, :init, [self(), handler, max_batch_size])
 
   @spec process_record(pid, Poller.record()) :: :ok
   def process_record(pid, record) do
@@ -52,23 +53,43 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
   end
 
   @doc false
-  def init(parent, handler) do
+  def init(parent, handler, max_batch_size) do
     :proc_lib.init_ack(parent, {:ok, self()})
-    loop(parent, handler)
+    loop(parent, handler, max_batch_size)
   end
 
-  defp loop(parent, handler) do
+  defp loop(parent, handler, max_batch_size) do
     case next_message(parent) do
-      :drain -> exit(:normal)
-      {:EXIT, ^parent, reason} -> exit(reason)
-      {:process_record, record} -> handle_record(record, handler)
-      other -> Logger.warn("unknown message: #{inspect(other)}")
+      {:process_record, record} ->
+        # the batch consists of all the records currently residing in the mailbox
+        batch = [record | records_in_mailbox(parent, max_batch_size, 1)]
+        handle_records(batch, handler)
+
+      other ->
+        Logger.warn("unknown message: #{inspect(other)}")
     end
 
-    loop(parent, handler)
+    loop(parent, handler, max_batch_size)
   end
 
-  defp next_message(parent) do
+  defp records_in_mailbox(_parent, max_batch_size, max_batch_size), do: []
+
+  defp records_in_mailbox(parent, max_batch_size, batch_size) do
+    # takes all records in the mailbox
+    case next_message(parent, _timeout = 0) do
+      {:process_record, record} ->
+        [record | records_in_mailbox(parent, max_batch_size, batch_size + 1)]
+
+      nil ->
+        []
+
+      other ->
+        Logger.warn("unknown message: #{inspect(other)}")
+        []
+    end
+  end
+
+  defp next_message(parent, timeout \\ :infinity) do
     # Implements a so called "select receive" pattern, placing higher priority on drain and parent
     # exit messages. This allows us to first handle the high prio messages, even though they were
     # placed into the mailbox after the regular messages. This is the reason why we can't use
@@ -80,25 +101,38 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
       {:EXIT, ^parent, _reason} = parent_exit -> parent_exit
     after
       # no high prio message in the mailbox, fetch the next message
-      0 -> receive(do: (message -> message))
+      0 ->
+        receive do
+          message -> message
+        after
+          timeout -> nil
+        end
+    end
+    |> case do
+      :drain -> exit(:normal)
+      {:EXIT, ^parent, reason} -> exit(reason)
+      other -> other
     end
   end
 
-  defp handle_record(record, handler) do
-    Poller.started_processing(record)
+  defp handle_records(records, handler) do
+    Enum.each(records, &Poller.started_processing/1)
 
     try do
       :telemetry.span(
-        [:kafka_client, :consumer, :record, :handler],
+        [:kafka_client, :consumer, :records, :handler],
         %{},
-        fn -> {handler.({:record, record}), Poller.telemetry_meta(record)} end
+        fn ->
+          record_metas = Enum.map(records, &Poller.telemetry_meta/1)
+          {handler.({:records, records}), %{records: record_metas}}
+        end
       )
     catch
       kind, payload when kind != :exit ->
         Logger.error(Exception.format(kind, payload, __STACKTRACE__))
     end
 
-    Poller.ack(record)
+    Poller.ack(records)
 
     {:noreply, handler}
   end

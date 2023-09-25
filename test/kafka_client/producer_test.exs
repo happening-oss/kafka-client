@@ -9,7 +9,7 @@ defmodule KafkaClient.ProducerTest do
     [topic] = start_consumer!().subscriptions
     produced = produce(topic)
 
-    consumed = assert_processing(topic, produced.partition)
+    assert [consumed] = assert_processing(topic, produced.partition).records
     keys = ~w/key value timestamp headers/a
     assert Map.take(produced, keys) == Map.take(consumed, keys)
   end
@@ -40,7 +40,7 @@ defmodule KafkaClient.ProducerTest do
 
     assert {produced_response_1, produced_response_2} == {:ok, {:error, :buffer_size_exceeded}}
 
-    consumed = assert_processing(topic, 0)
+    assert [consumed] = assert_processing(topic, 0).records
     assert consumed.key == "key1"
 
     refute_processing(topic, 0)

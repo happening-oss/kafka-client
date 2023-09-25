@@ -5,7 +5,7 @@ defmodule KafkaClient.Consumer.BackpressureTest do
   @moduletag :require_kafka
 
   test "buffer length based pause" do
-    consumer = start_consumer!(num_topics: 2)
+    consumer = start_consumer!(num_topics: 2, max_batch_size: 1)
     [topic1, topic2] = consumer.subscriptions
 
     %{offset: last_buffered_offset} =
@@ -26,16 +26,16 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     assert_processing(topic2, 0)
 
     # check that buffer is not unpaused immediately
-    Stream.repeatedly(fn -> process_next_record!(topic1, 0) end) |> Enum.take(499)
+    Stream.repeatedly(fn -> process_next_batch!(topic1, 0) end) |> Enum.take(499)
     refute_polled(topic1, 0, first_paused_offset)
 
     # check that topic-partition is resumed after one more record is processed
-    process_next_record!(topic1, 0)
+    process_next_batch!(topic1, 0)
     assert_polled(topic1, 0, first_paused_offset)
   end
 
   test "messages size based pause" do
-    consumer = start_consumer!(num_topics: 2)
+    consumer = start_consumer!(num_topics: 2, max_batch_size: 1)
     [topic1, topic2] = consumer.subscriptions
 
     value = <<0::200_000-unit(8)>>
@@ -58,11 +58,11 @@ defmodule KafkaClient.Consumer.BackpressureTest do
     assert_processing(topic2, 0)
 
     # check that buffer is not unpaused immediately
-    Stream.repeatedly(fn -> process_next_record!(topic1, 0) end) |> Enum.take(2)
+    Stream.repeatedly(fn -> process_next_batch!(topic1, 0) end) |> Enum.take(2)
     refute_polled(topic1, 0, first_paused_offset)
 
     # check that topic-partition is resumed after one more record is processed
-    process_next_record!(topic1, 0)
+    process_next_batch!(topic1, 0)
     assert_polled(topic1, 0, first_paused_offset)
   end
 
