@@ -148,7 +148,7 @@ defmodule KafkaClient.Consumer.AnonymousTest do
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
-    
+
     sync_produce!(topic, partition: 1)
     sync_produce!(topic, partition: 1)
     sync_produce!(topic, partition: 1)
