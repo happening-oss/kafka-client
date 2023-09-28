@@ -50,7 +50,8 @@ defmodule KafkaClient.Producer do
 
   @type publish_result ::
           {:ok, KafkaClient.partition(), KafkaClient.offset(), KafkaClient.timestamp()}
-          | {:error, :timeout} | {:error, String.t()}
+          | {:error, :timeout}
+          | {:error, String.t()}
 
   @doc """
   Starts the producer process.
