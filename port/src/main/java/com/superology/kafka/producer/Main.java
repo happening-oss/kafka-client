@@ -3,8 +3,10 @@ package com.superology.kafka.producer;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
+import java.util.logging.Handler;
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
 
 import com.ericsson.otp.erlang.*;
@@ -118,14 +120,18 @@ public class Main implements Port {
         public void onCompletion(RecordMetadata metadata, Exception e) {
           OtpErlangObject payload;
 
-          if (e != null)
-            payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
-          else
+          if (e != null) {
+            if (e instanceof TimeoutException) {
+              payload = Erlang.error(new OtpErlangAtom("timeout"));
+            } else {
+              payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
+            }
+          } else {
             payload = Erlang.ok(
                 new OtpErlangInt(metadata.partition()),
                 new OtpErlangLong(metadata.offset()),
                 new OtpErlangLong(metadata.timestamp()));
-
+          }
           try {
             output.emit(
                 Erlang.tuple(
