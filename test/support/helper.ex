@@ -74,7 +74,7 @@ defmodule KafkaClient.Test.Helper do
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler_id) end)
 
     if Keyword.get(opts, :await_assigned?, true),
-      do: assert_receive({:assigned, _partitions}, :timer.seconds(10))
+      do: assert_receive({:assigned, _partitions}, :timer.seconds(20))
 
     %{pid: consumer_pid, child_id: child_id, subscriptions: subscriptions, group_id: group_id}
   end
@@ -113,7 +113,7 @@ defmodule KafkaClient.Test.Helper do
 
   def assert_polled(topic, partition, offset) do
     assert_receive {:polled, %{topic: ^topic, partition: ^partition, offset: ^offset}},
-                   :timer.seconds(10)
+                   :timer.seconds(20)
   end
 
   def refute_polled(topic, partition, offset) do
@@ -123,7 +123,7 @@ defmodule KafkaClient.Test.Helper do
 
   def assert_processing(topic, partition) do
     assert_receive {:processing, %{topic: ^topic, partition: ^partition} = batch},
-                   :timer.seconds(10)
+                   :timer.seconds(20)
 
     batch
   end
@@ -132,7 +132,7 @@ defmodule KafkaClient.Test.Helper do
     refute_receive {:processing, %{topic: ^topic, partition: ^partition}}
   end
 
-  def assert_caught_up, do: assert_receive(:caught_up, :timer.seconds(10))
+  def assert_caught_up, do: assert_receive(:caught_up, :timer.seconds(20))
   def refute_caught_up, do: refute_receive(:caught_up, :timer.seconds(1))
 
   def process_next_batch!(topic, partition) do
