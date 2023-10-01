@@ -33,7 +33,7 @@ defmodule KafkaClient.GenPort do
       def handle_port_message(message, state) do
         require Logger
 
-        Logger.warn("unhandled port message #{inspect(message)}")
+        Logger.warning("unhandled port message #{inspect(message)}")
         {:noreply, state}
       end
 
