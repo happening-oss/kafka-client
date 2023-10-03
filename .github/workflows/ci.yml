@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Elixir
-        uses: erlef/setup-elixir@v1
+        uses: erlef/setup-beam@v1
         with:
           otp-version: 25.0
           elixir-version: 1.13.4
