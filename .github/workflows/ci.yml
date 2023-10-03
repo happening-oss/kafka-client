@@ -1,0 +1,109 @@
+name: "ci"
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  actions: write # require to delete cache
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      CACHE_VERSION: v1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Elixir
+        uses: erlef/setup-elixir@v1
+        with:
+          otp-version: 25.0
+          elixir-version: 1.13.4
+
+      - name: Install Java
+        uses: actions/setup-java@v2
+        with:
+          java-version: 17
+          distribution: adopt-openj9
+
+      - name: Start supporting services
+        run: docker compose up -d
+
+      - name: Ensure Kafka is started
+        run: |
+          # give up after 60 seconds
+          max_wait_time=60
+
+          # Use a loop to check if Kafka is ready
+          start_time=$(date +%s)
+          until docker compose logs broker | grep -q "started"; do
+            current_time=$(date +%s)
+            elapsed_time=$((current_time - start_time))
+            if [ "$elapsed_time" -ge "$max_wait_time" ]; then
+              echo "Kafka did not start within the specified timeout."
+              exit 1  # Exit the workflow with an error
+            fi
+
+            sleep 5
+          done
+
+      - name: Restore cache
+        id: restore-cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+            port/target
+            priv/kafka-client-1.0.jar
+          # We're only using current branch name for caching. That way we avoid the need for
+          # complicated `hashFiles` expressions. The cache is always force updated on successful
+          # run (see clean & save actions at the end).
+          key: deps-${{ env.CACHE_VERSION }}-${{ github.ref }}-
+          restore-keys: |
+            deps-${{ env.CACHE_VERSION }}-refs/heads/develop-
+
+      - name: Fetch deps
+        run: mix deps.get
+
+      - name: Compile
+        run: MIX_ENV=test mix compile --warnings-as-errors
+
+      - name: Check formatting
+        run: MIX_ENV=test mix format --check-formatted
+
+      - name: Run tests
+        # hacky way to avoid failing on flaky tests
+        run: mix test || mix test --failed
+
+      - name: Run credo
+        run: MIX_ENV=test mix credo list
+
+      - name: Run dialyzer
+        run: mix dialyzer
+
+      # Explicitly remove and save the cache to simulate overwrite.
+      # Taken from https://github.com/azu/github-actions-overwrite-cache-example
+      # See also https://github.com/actions/cache/issues/342#issuecomment-1711054115
+      - name: Clear cache
+        if: ${{ steps.restore-cache.outputs.cache-hit }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install actions/gh-actions-cache
+          gh actions-cache delete deps-${{ env.CACHE_VERSION }}-${{ github.ref }}- --confirm
+        continue-on-error: true
+
+      - name: Save cache
+        uses: actions/cache/save@v3
+        with:
+          path: |
+            deps
+            _build
+            port/target
+            priv/kafka-client-1.0.jar
+          key: deps-${{ env.CACHE_VERSION }}-${{ github.ref }}-

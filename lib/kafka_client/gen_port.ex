@@ -33,7 +33,7 @@ defmodule KafkaClient.GenPort do
       def handle_port_message(message, state) do
         require Logger
 
-        Logger.warn("unhandled port message #{inspect(message)}")
+        Logger.warning("unhandled port message #{inspect(message)}")
         {:noreply, state}
       end
 
@@ -68,7 +68,7 @@ defmodule KafkaClient.GenPort do
   def port, do: Process.get({__MODULE__, :port})
 
   @spec call(GenServer.server(), atom, [term], timeout) :: term
-  def call(server, name, args \\ [], timeout \\ :timer.seconds(5)) do
+  def call(server, name, args \\ [], timeout \\ :timer.seconds(10)) do
     server
     |> GenServer.whereis()
     |> GenServer.call({{__MODULE__, :call}, name, args}, timeout)

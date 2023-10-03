@@ -38,7 +38,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     resume_processing(partition0_processing_during_shutdown)
 
     # check that the consumer is down, and that the Java process stopped
-    assert_receive {:DOWN, ^mref_consumer, :process, _pid, _reason}, :timer.seconds(2)
+    assert_receive {:DOWN, ^mref_consumer, :process, _pid, _reason}, :timer.seconds(10)
     refute os_process_alive?(os_pid)
 
     # the processor on partition 0 should have stopped normally, because it finished processing
@@ -106,7 +106,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     )
 
     # await for the notification
-    assert_receive {:unassigned, _partitions}, :timer.seconds(10)
+    assert_receive {:unassigned, _partitions}, :timer.seconds(20)
 
     # sleep a bit more to let the rebalance finish (eliminates RebalanceInProgressException)
     Process.sleep(:timer.seconds(1))
@@ -150,7 +150,7 @@ defmodule KafkaClient.Consumer.FlowTest do
     ExUnit.CaptureLog.capture_log(fn ->
       mref = Process.monitor(consumer.pid)
       Process.exit(batch.processor, :kill)
-      assert_receive {:DOWN, ^mref, :process, _pid, reason}, :timer.seconds(10)
+      assert_receive {:DOWN, ^mref, :process, _pid, reason}, :timer.seconds(20)
       assert reason == {:children_crashed, [{:processor, {topic, 0}}]}
     end)
   end

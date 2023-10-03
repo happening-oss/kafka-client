@@ -66,7 +66,7 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
         handle_records(batch, handler)
 
       other ->
-        Logger.warn("unknown message: #{inspect(other)}")
+        Logger.warning("unknown message: #{inspect(other)}")
     end
 
     loop(parent, handler, max_batch_size)
@@ -84,7 +84,7 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
         []
 
       other ->
-        Logger.warn("unknown message: #{inspect(other)}")
+        Logger.warning("unknown message: #{inspect(other)}")
         []
     end
   end

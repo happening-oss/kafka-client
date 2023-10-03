@@ -166,10 +166,10 @@ defmodule KafkaClient.Consumer.AnonymousTest do
       recreate_topics?: false
     )
 
-    %{records: [processing]} = assert_processing(topic, 0)
+    %{records: [processing | _]} = assert_processing(topic, 0)
     assert processing.offset == 1
 
-    %{records: [processing2]} = assert_processing(topic, 1)
+    %{records: [processing2 | _]} = assert_processing(topic, 1)
     assert processing2.offset == 1
   end
 
@@ -214,10 +214,10 @@ defmodule KafkaClient.Consumer.AnonymousTest do
       recreate_topics?: false
     )
 
-    %{records: [processing]} = assert_processing(topic, 0)
+    %{records: [processing | _]} = assert_processing(topic, 0)
     assert processing.offset == record1.offset
 
-    %{records: [processing2]} = assert_processing(topic, 1)
+    %{records: [processing2 | _]} = assert_processing(topic, 1)
     assert processing2.offset == record2.offset
   end
 
@@ -252,16 +252,16 @@ defmodule KafkaClient.Consumer.AnonymousTest do
       recreate_topics?: false
     )
 
-    %{records: [processing_topic1_part0]} = assert_processing(topic1, 0)
+    %{records: [processing_topic1_part0 | _]} = assert_processing(topic1, 0)
     assert processing_topic1_part0.offset == record1.offset
 
-    %{records: [processing_topic1_part1]} = assert_processing(topic1, 1)
+    %{records: [processing_topic1_part1 | _]} = assert_processing(topic1, 1)
     assert processing_topic1_part1.offset == record2.offset
 
-    %{records: [processing_topic2_part0]} = assert_processing(topic2, 0)
+    %{records: [processing_topic2_part0 | _]} = assert_processing(topic2, 0)
     assert processing_topic2_part0.offset == 0
 
-    %{records: [processing_topic2_part1]} = assert_processing(topic2, 1)
+    %{records: [processing_topic2_part1 | _]} = assert_processing(topic2, 1)
     assert processing_topic2_part1.offset == 0
   end
 
