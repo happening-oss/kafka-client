@@ -3,7 +3,6 @@ package com.superology.kafka.producer;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
-import java.util.logging.Handler;
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -69,7 +68,6 @@ public class Main implements Port {
 
   private Integer partitionsFor(Producer producer, Port.Command command, Output output)
       throws InterruptedException, KafkaException {
-    @SuppressWarnings("unchecked")
     var topic = (String) command.args()[0];
 
     OtpErlangObject response;
