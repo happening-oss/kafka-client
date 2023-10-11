@@ -20,8 +20,8 @@ jobs:
       - name: Install Elixir
         uses: erlef/setup-beam@v1
         with:
-          otp-version: 25.0
-          elixir-version: 1.13.4
+          otp-version: 26.1
+          elixir-version: 1.15.6
 
       - name: Install Java
         uses: actions/setup-java@v2
