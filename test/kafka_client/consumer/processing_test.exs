@@ -95,12 +95,14 @@ defmodule KafkaClient.Consumer.ProcessingTest do
       fn ->
         group_id = consumer.group_id
         partitions = [{topic, 0}, {topic, 1}]
-        {:ok, committed} = Admin.list_consumer_group_offsets(admin, group_id, partitions)
+        {:ok, committed} = Admin.list_consumer_group_offsets(admin, %{group_id => partitions})
 
         assert committed ==
                  %{
-                   {topic, 0} => last_processed_record_partition_0.offset + 1,
-                   {topic, 1} => last_processed_record_partition_1.offset + 1
+                   group_id => %{
+                     {topic, 0} => last_processed_record_partition_0.offset + 1,
+                     {topic, 1} => last_processed_record_partition_1.offset + 1
+                   }
                  }
       end,
       attempts: 20,

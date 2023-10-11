@@ -121,7 +121,7 @@ defmodule KafkaClient.Admin do
     do: GenPort.call(server, :delete_consumer_groups, [consumer_groups])
 
   @doc """
-  Returns committed offsets for the given consumer group in the given partitions.
+  Returns committed offsets for the given consumer groups in the given partitions.
 
   Each returned offset is equal to the last committed offset incremented by 1. If the group does
   not have a committed offset for some partition, the corresponding value in the returned map will
@@ -129,13 +129,12 @@ defmodule KafkaClient.Admin do
   """
   @spec list_consumer_group_offsets(
           GenServer.server(),
-          String.t(),
-          [KafkaClient.topic_partition()]
+          %{String.t() => [KafkaClient.topic_partition()]}
         ) ::
-          {:ok, %{KafkaClient.topic_partition() => KafkaClient.offset() | nil}}
+          {:ok, %{String.t() => %{KafkaClient.topic_partition() => KafkaClient.offset() | nil}}}
           | {:error, String.t()}
-  def list_consumer_group_offsets(server, group_id, topic_partitions),
-    do: GenPort.call(server, :list_consumer_group_offsets, [group_id, topic_partitions])
+  def list_consumer_group_offsets(server, group_specs),
+    do: GenPort.call(server, :list_consumer_group_offsets, [group_specs])
 
   @doc "Creates the new topics."
   @spec create_topics(GenServer.server(), [

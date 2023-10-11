@@ -289,32 +289,50 @@ public class Main implements Port {
 
   private Integer listConsumerGroupOffsets(Admin admin, Port.Command command, Output output)
       throws InterruptedException {
-    var topicPartitions = new LinkedList<TopicPartition>();
 
-    for (@SuppressWarnings("unchecked")
-    var topicPartitionTuple : ((Iterable<Object[]>) command.args()[1])) {
-      var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
-      topicPartitions.add(topicPartition);
+    @SuppressWarnings("unchecked")
+    var inputMap = (HashMap<String, Iterable<Object[]>>) command.args()[0];
+    var groupSpecs = new HashMap<String, ListConsumerGroupOffsetsSpec>();
+
+    for (var entry : inputMap.entrySet()) {
+      var groupId = entry.getKey();
+
+      var topicPartitions = new LinkedList<TopicPartition>();
+      for (var topicPartitionTuple : entry.getValue()) {
+        var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
+        topicPartitions.add(topicPartition);
+      }
+
+      var offsetsSpec = new ListConsumerGroupOffsetsSpec();
+      offsetsSpec.topicPartitions(topicPartitions);
+
+      groupSpecs.put(groupId, offsetsSpec);
     }
 
     var options = new ListConsumerGroupOffsetsOptions();
-    options.topicPartitions(topicPartitions);
 
     OtpErlangObject response;
     try {
       var map = Erlang.toMap(
-          admin.listConsumerGroupOffsets((String) command.args()[0], options)
-              .partitionsToOffsetAndMetadata()
+          admin.listConsumerGroupOffsets(groupSpecs, options)
+              .all()
               .get(),
           entry -> {
-            var value = entry.getValue();
-            OtpErlangObject offset = value == null ? Erlang.nil() : new OtpErlangLong(value.offset());
+            var topicPartitions = Erlang.toMap(
+                entry.getValue(),
+                innerEntry -> {
+                  var value = innerEntry.getValue();
+                  OtpErlangObject offset = value == null ? Erlang.nil() : new OtpErlangLong(value.offset());
+                  return Erlang.mapEntry(
+                      Erlang.tuple(
+                          new OtpErlangBinary(innerEntry.getKey().topic().getBytes()),
+                          new OtpErlangInt(innerEntry.getKey().partition())),
+                      offset);
+                });
 
             return Erlang.mapEntry(
-                Erlang.tuple(
-                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                    new OtpErlangInt(entry.getKey().partition())),
-                offset);
+                new OtpErlangBinary(entry.getKey().getBytes()),
+                topicPartitions);
           });
 
       response = Erlang.ok(map);

@@ -160,8 +160,14 @@ defmodule KafkaClient.AdminTest do
 
     group_id = consumer.group_id
     topics = [{topic, 0}, {topic, 1}]
-    assert {:ok, committed} = Admin.list_consumer_group_offsets(ctx.admin, group_id, topics)
-    assert committed == %{{topic, 0} => last_processed_offset_partition_0 + 1, {topic, 1} => nil}
+    assert {:ok, committed} = Admin.list_consumer_group_offsets(ctx.admin, %{group_id => topics})
+
+    assert committed == %{
+             group_id => %{
+               {topic, 0} => last_processed_offset_partition_0 + 1,
+               {topic, 1} => nil
+             }
+           }
   end
 
   test "stop", ctx do
