@@ -62,7 +62,7 @@ defmodule KafkaClient.AdminTest do
 
   test "list_end_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
-    assert error == "This server does not host this topic-partition."
+    assert error =~ "metadata for topic `unknown_topic` could not be found"
 
     topic1 = new_test_topic()
     topic2 = new_test_topic()
@@ -85,7 +85,7 @@ defmodule KafkaClient.AdminTest do
 
   test "list_earliest_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
-    assert error == "This server does not host this topic-partition."
+    assert error =~ "metadata for topic `unknown_topic` could not be found"
 
     topic1 = new_test_topic()
     topic2 = new_test_topic()
