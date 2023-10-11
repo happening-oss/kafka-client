@@ -166,7 +166,10 @@ defmodule KafkaClient.Test.Helper do
       "kafka_client_test_topic_",
 
       # current time reduces the chance of a name collision between two `mix test` sessions
-      Base.url_encode64(<<DateTime.to_unix(DateTime.utc_now(), :microsecond)::64>>, padding: false)::binary,
+      Base.url_encode64(
+        <<DateTime.to_unix(DateTime.utc_now(), :microsecond)::64>>,
+        padding: false
+      )::binary,
 
       # randomness reduces the change of a name collision in a single `mix test` session
       Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)::binary
