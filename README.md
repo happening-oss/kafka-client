@@ -116,3 +116,7 @@ See documentation of the following modules for detailed description:
 - [KafkaClient.Consumer](lib/kafka_client/consumer.ex)
 - [KafkaClient.Consumer.Poller](lib/kafka_client/consumer/poller.ex)
 - [KafkaClient.Consumer.Stream](lib/kafka_client/consumer/stream.ex)
+
+## Contributing
+
+See [CONTRIBUTING.md]
