@@ -1,6 +1,6 @@
 # KafkaClient
 
-Elixir wrapper aroundthe [Apache Kafka Java client library](https://javadoc.io/doc/org.apache.kafka/kafka-clients/latest/index.html).
+Elixir wrapper around the [Apache Kafka Java client library](https://javadoc.io/doc/org.apache.kafka/kafka-clients/latest/index.html).
 
 This wrapper is created to overcome deficiencies in the existing BEAM Kafka clients. Adapting those clients was considered, but it was estimated that implementing some of the features would be tricky to implement and maintain, since Kafka delegates a lot of complexity to the client, especially in the consumer part.
 
