@@ -1,7 +1,9 @@
 package com.superology.kafka.port;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /*
  * The worker thread of a port program. See {@link Driver} for details.

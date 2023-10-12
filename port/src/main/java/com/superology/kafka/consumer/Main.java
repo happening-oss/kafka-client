@@ -1,13 +1,29 @@
 package com.superology.kafka.consumer;
 
-import java.util.*;
-import java.util.stream.*;
-
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.*;
-
-import com.ericsson.otp.erlang.*;
-import com.superology.kafka.port.*;
+import com.ericsson.otp.erlang.OtpErlangAtom;
+import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangInt;
+import com.ericsson.otp.erlang.OtpErlangLong;
+import com.ericsson.otp.erlang.OtpErlangObject;
+import com.superology.kafka.port.Driver;
+import com.superology.kafka.port.Erlang;
+import com.superology.kafka.port.Output;
+import com.superology.kafka.port.Port;
+import com.superology.kafka.port.Worker;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 
 /*
  * Implements the consumer port, which runs the kafka poller loop, and
@@ -45,10 +61,11 @@ public class Main implements Port, ConsumerRebalanceListener {
         isAnonymous = (opts.consumerProps().getProperty("group.id") == null);
 
         try (var consumer = new Consumer(opts.consumerProps())) {
-            if (isAnonymous)
+            if (isAnonymous) {
                 startAnonymousConsuming(consumer, opts.subscriptions);
-            else
+            } else {
                 startConsumerGroupConsuming(consumer, opts.subscriptions);
+            }
 
             var pollDuration = (int) opts.pollerProps().getOrDefault("poll_duration", 10);
             var commitInterval = (int) opts.pollerProps().getOrDefault("commit_interval", 5000);
@@ -59,15 +76,17 @@ public class Main implements Port, ConsumerRebalanceListener {
                 // commands issued by Elixir, such as ack or stop
                 for (var command : worker.drainCommands()) {
                     var exitCode = dispatchMap.get(command.name()).handle(consumer, command);
-                    if (exitCode != null)
+                    if (exitCode != null) {
                         return exitCode;
+                    }
                 }
 
                 // Backpressure and commits are collected while handling Elixir
                 // commands. Now we're flushing the final state (pauses and commits).
                 backpressure.flush();
-                if (!isAnonymous)
+                if (!isAnonymous) {
                     commits.flush(false);
+                }
 
                 var records = consumer.poll(java.time.Duration.ofMillis(pollDuration));
 
@@ -111,8 +130,9 @@ public class Main implements Port, ConsumerRebalanceListener {
     }
 
     private int stop(Consumer consumer, Port.Command command) {
-        if (!isAnonymous)
+        if (!isAnonymous) {
             commits.flush(true);
+        }
 
         return 0;
     }
@@ -129,13 +149,15 @@ public class Main implements Port, ConsumerRebalanceListener {
                 if (endOffsets != null) {
 
                     var endOffset = this.endOffsets.get(ack.partition);
-                    if (endOffset != null && endOffset - 1 <= ack.offset())
+                    if (endOffset != null && endOffset - 1 <= ack.offset()) {
                         this.endOffsets.remove(ack.partition());
+                    }
 
                     maybeEmitCaughtUp();
                 }
-            } else
+            } else {
                 commits.add(ack.partition(), ack.offset());
+            }
         }
 
         return null;
@@ -148,15 +170,16 @@ public class Main implements Port, ConsumerRebalanceListener {
     }
 
     private static long toLong(Object value) {
-        if (value instanceof Long)
+        if (value instanceof Long) {
             return (long) value;
+        }
 
         return (long) ((int) value);
     }
 
     private void startConsumerGroupConsuming(Consumer consumer, Collection<Subscription> subscriptions) {
         // in a consumer group -> subscribe to the desired topics
-        var topics = StreamSupport.stream(subscriptions.spliterator(), false).map(
+        var topics = subscriptions.stream().map(
                 subscription -> subscription.partition().topic()
         ).distinct().toList();
         consumer.subscribe(topics, this);
@@ -187,8 +210,9 @@ public class Main implements Port, ConsumerRebalanceListener {
         // difference between the current consumer position and the end offset
         // for a specific partition.
         for (var entry : consumer.endOffsets(assignments).entrySet()) {
-            if (entry.getValue() != consumer.position(entry.getKey()))
+            if (entry.getValue() != consumer.position(entry.getKey())) {
                 this.endOffsets.put(entry.getKey(), entry.getValue());
+            }
         }
 
         maybeEmitCaughtUp();
@@ -198,12 +222,16 @@ public class Main implements Port, ConsumerRebalanceListener {
         var assignments = new ArrayList<TopicPartition>();
         for (var subscription : subscriptions) {
             if (subscription.partition().partition() >= 0)
-                // client is interested in a particular topic-partition
+            // client is interested in a particular topic-partition
+            {
                 assignments.add(subscription.partition());
-            else
-                // client wants to consume the entire topic
-                for (var partitionInfo : consumer.partitionsFor(subscription.partition().topic()))
+            } else
+            // client wants to consume the entire topic
+            {
+                for (var partitionInfo : consumer.partitionsFor(subscription.partition().topic())) {
                     assignments.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+                }
+            }
         }
         consumer.assign(assignments);
         return assignments;

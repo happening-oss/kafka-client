@@ -1,15 +1,27 @@
 package com.superology.kafka.producer;
 
-import java.util.*;
-import java.util.concurrent.ExecutionException;
-
-import org.apache.kafka.clients.producer.*;
+import com.ericsson.otp.erlang.OtpErlangAtom;
+import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangDouble;
+import com.ericsson.otp.erlang.OtpErlangInt;
+import com.ericsson.otp.erlang.OtpErlangLong;
+import com.ericsson.otp.erlang.OtpErlangObject;
+import com.superology.kafka.port.Driver;
+import com.superology.kafka.port.Erlang;
+import com.superology.kafka.port.Output;
+import com.superology.kafka.port.Port;
+import com.superology.kafka.port.Worker;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Properties;
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
-
-import com.ericsson.otp.erlang.*;
-import com.superology.kafka.port.*;
 
 public class Main implements Port {
     public static void main(String[] args) {
@@ -33,8 +45,9 @@ public class Main implements Port {
             while (true) {
                 var command = worker.take();
                 var exitCode = dispatchMap.get(command.name()).handle(producer, command, output);
-                if (exitCode != null)
+                if (exitCode != null) {
                     return exitCode;
+                }
             }
         }
     }
@@ -76,9 +89,7 @@ public class Main implements Port {
         try {
             var list = Erlang.toList(
                     producer.partitionsFor(topic),
-                    entry -> {
-                        return new OtpErlangInt(entry.partition());
-                    }
+                    entry -> new OtpErlangInt(entry.partition())
             );
             response = Erlang.ok(list);
         } catch (Exception e) {
@@ -97,7 +108,7 @@ public class Main implements Port {
 
     private Integer send(
             Producer producer, Port.Command command, Output output
-    ) throws InterruptedException, ExecutionException {
+    ) {
         @SuppressWarnings("unchecked")
         var record = (Map<String, Object>) command.args()[0];
 
@@ -118,34 +129,32 @@ public class Main implements Port {
         Callback callback = null;
         var callbackId = (byte[]) command.args()[1];
         if (callbackId != null) {
-            callback = new Callback() {
-                public void onCompletion(RecordMetadata metadata, Exception e) {
-                    OtpErlangObject payload;
+            callback = (metadata, e) -> {
+                OtpErlangObject payload;
 
-                    if (e != null) {
-                        if (e instanceof TimeoutException) {
-                            payload = Erlang.error(new OtpErlangAtom("timeout"));
-                        } else {
-                            payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
-                        }
+                if (e != null) {
+                    if (e instanceof TimeoutException) {
+                        payload = Erlang.error(new OtpErlangAtom("timeout"));
                     } else {
-                        payload = Erlang.ok(
-                                new OtpErlangInt(metadata.partition()),
-                                new OtpErlangLong(metadata.offset()),
-                                new OtpErlangLong(metadata.timestamp())
-                        );
+                        payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
                     }
-                    try {
-                        output.emit(
-                                Erlang.tuple(
-                                        new OtpErlangAtom("on_completion"),
-                                        new OtpErlangBinary(callbackId),
-                                        payload
-                                )
-                        );
-                    } catch (InterruptedException ie) {
-                        throw new org.apache.kafka.common.errors.InterruptException(ie);
-                    }
+                } else {
+                    payload = Erlang.ok(
+                            new OtpErlangInt(metadata.partition()),
+                            new OtpErlangLong(metadata.offset()),
+                            new OtpErlangLong(metadata.timestamp())
+                    );
+                }
+                try {
+                    output.emit(
+                            Erlang.tuple(
+                                    new OtpErlangAtom("on_completion"),
+                                    new OtpErlangBinary(callbackId),
+                                    payload
+                            )
+                    );
+                } catch (InterruptedException ie) {
+                    throw new org.apache.kafka.common.errors.InterruptException(ie);
                 }
             };
         }

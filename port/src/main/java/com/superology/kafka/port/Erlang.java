@@ -1,11 +1,23 @@
 package com.superology.kafka.port;
 
-import java.io.*;
-import java.util.*;
+import com.ericsson.otp.erlang.OtpErlangAtom;
+import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangList;
+import com.ericsson.otp.erlang.OtpErlangLong;
+import com.ericsson.otp.erlang.OtpErlangMap;
+import com.ericsson.otp.erlang.OtpErlangObject;
+import com.ericsson.otp.erlang.OtpErlangTuple;
+import com.ericsson.otp.erlang.OtpInputStream;
+import com.ericsson.otp.erlang.OtpOutputStream;
+import java.io.IOException;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.StreamSupport;
-
-import com.ericsson.otp.erlang.*;
 
 /*
  * Handles encoding and decoding of Erlang's external term format, which is used
@@ -105,61 +117,58 @@ public class Erlang {
     }
 
     private static Object fromErlang(OtpErlangObject value) throws Exception {
-        if (value instanceof OtpErlangList)
+        if (value instanceof OtpErlangList) {
             return fromErlangList((OtpErlangList) value);
+        }
 
-        if (value instanceof OtpErlangTuple) {
-            var tuple = (OtpErlangTuple) value;
-
-            if (tuple.elementAt(0).equals(new OtpErlangAtom("__binary__")))
+        if (value instanceof OtpErlangTuple tuple) {
+            if (tuple.elementAt(0).equals(new OtpErlangAtom("__binary__"))) {
                 return tuple.elementAt(1).equals(nil()) ? null : ((OtpErlangBinary) tuple.elementAt(1)).binaryValue();
-
+            }
             return fromErlangList(Arrays.asList(tuple.elements())).toArray();
         }
 
-        if (value instanceof OtpErlangMap)
+        if (value instanceof OtpErlangMap) {
             return fromErlangMap((OtpErlangMap) value);
+        }
 
-        if (value instanceof OtpErlangBinary)
+        if (value instanceof OtpErlangBinary) {
             return new String(((OtpErlangBinary) value).binaryValue());
+        }
 
         if (value instanceof OtpErlangLong) {
             var number = ((OtpErlangLong) value).longValue();
-            if (number >= Integer.MIN_VALUE && number <= Integer.MAX_VALUE)
+            if (number >= Integer.MIN_VALUE && number <= Integer.MAX_VALUE) {
                 return (int) number;
-            else
+            } else {
                 return number;
+            }
         }
 
         if (value instanceof OtpErlangAtom) {
             var atomValue = ((OtpErlangAtom) value).atomValue();
-            switch (atomValue) {
-                case "true":
-                case "false":
-                    return Boolean.parseBoolean(atomValue);
-
-                case "nil":
-                    return null;
-
-                default:
-                    return atomValue;
-            }
+            return switch (atomValue) {
+                case "true", "false" -> Boolean.parseBoolean(atomValue);
+                case "nil" -> null;
+                default -> atomValue;
+            };
         }
 
         throw new Exception("error converting " + value.getClass() + " to java object: " + value);
     }
 
     private static Collection<Object> fromErlangList(Iterable<OtpErlangObject> objects) throws Exception {
-        var result = new ArrayList<Object>();
+        var result = new ArrayList<>();
 
-        for (var object : objects)
+        for (var object : objects) {
             result.add(fromErlang(object));
+        }
 
         return result;
     }
 
     private static Map<Object, Object> fromErlangMap(OtpErlangMap otpMap) throws Exception {
-        var map = new HashMap<Object, Object>();
+        var map = new HashMap<>();
 
         for (var param : otpMap.entrySet()) {
             var key = fromErlang(param.getKey());

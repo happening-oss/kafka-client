@@ -1,9 +1,10 @@
 package com.superology.kafka.consumer;
 
 import java.time.Duration;
-import java.util.*;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.*;
+import java.util.Collection;
+import java.util.HashMap;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 
 /*
  * Responsible for committing offsets to Kafka. This class aggregates pending
@@ -30,10 +31,11 @@ final class Commits {
         if (now - lastCommit >= commitIntervalNs) {
             pendingCommits.keySet().retainAll(consumer.assignment());
             if (!pendingCommits.isEmpty()) {
-                if (sync)
+                if (sync) {
                     consumer.commitSync(pendingCommits);
-                else
+                } else {
                     consumer.commitAsync(pendingCommits, null);
+                }
 
                 pendingCommits.clear();
                 lastCommit = now;
@@ -46,8 +48,9 @@ final class Commits {
         PartitionOffsets commits = new PartitionOffsets();
         for (var partition : partitions) {
             var offset = pendingCommits.remove(partition);
-            if (offset != null)
+            if (offset != null) {
                 commits.put(partition, offset);
+            }
         }
 
         // Sync committing, because we want to block the callback until we commit.
@@ -64,7 +67,7 @@ final class Commits {
         pendingCommits.keySet().removeAll(partitions);
     }
 
-    final class PartitionOffsets extends HashMap<TopicPartition, OffsetAndMetadata> {
+    static final class PartitionOffsets extends HashMap<TopicPartition, OffsetAndMetadata> {
         public PartitionOffsets() {
             super();
         }

@@ -1,7 +1,11 @@
 package com.superology.kafka.port;
 
-import java.io.*;
-import java.util.*;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /*
  * This class implements the generic behaviour of a Java port. The concrete
@@ -31,8 +35,9 @@ public class Driver {
         // Reading from the file descriptor 3, which is allocated by Elixir for input
         try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
             ArrayList<Object> decodedArgs = new ArrayList<>();
-            for (var arg : args)
+            for (var arg : args) {
                 decodedArgs.add(decodeArg(arg));
+            }
 
             var output = Output.start();
             var worker = Worker.start(port, output, decodedArgs.toArray());

@@ -1,15 +1,35 @@
 package com.superology.kafka.admin;
 
-import java.util.*;
-import java.util.concurrent.*;
-
-import org.apache.kafka.clients.admin.*;
-import org.apache.kafka.common.*;
+import com.ericsson.otp.erlang.OtpErlangAtom;
+import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangInt;
+import com.ericsson.otp.erlang.OtpErlangLong;
+import com.ericsson.otp.erlang.OtpErlangMap;
+import com.ericsson.otp.erlang.OtpErlangObject;
+import com.superology.kafka.port.Driver;
+import com.superology.kafka.port.Erlang;
+import com.superology.kafka.port.Output;
+import com.superology.kafka.port.Port;
+import com.superology.kafka.port.Worker;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.DeleteConsumerGroupsOptions;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsOptions;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsSpec;
+import org.apache.kafka.clients.admin.ListConsumerGroupsOptions;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.admin.OffsetSpec;
+import org.apache.kafka.common.TopicCollection;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigResource;
-
-import com.ericsson.otp.erlang.*;
-
-import com.superology.kafka.port.*;
 
 public class Main implements Port {
     public static void main(String[] args) {
@@ -41,8 +61,9 @@ public class Main implements Port {
             while (true) {
                 var command = worker.take();
                 var exitCode = dispatchMap.get(command.name()).handle(admin, command, output);
-                if (exitCode != null)
+                if (exitCode != null) {
                     return exitCode;
+                }
             }
         }
     }
@@ -147,16 +168,13 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.listOffsets(topicPartitionOffsets).all().get(),
-                    entry -> {
-                        return Erlang.mapEntry(
-                                Erlang.tuple(
-                                        new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                                        new OtpErlangInt(entry.getKey().partition())
-                                ),
-                                new OtpErlangLong(entry.getValue().offset())
-                        );
-
-                    }
+                    entry -> Erlang.mapEntry(
+                            Erlang.tuple(
+                                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
+                                    new OtpErlangInt(entry.getKey().partition())
+                            ),
+                            new OtpErlangLong(entry.getValue().offset())
+                    )
             );
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
@@ -181,16 +199,13 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.listOffsets(topicPartitionOffsets).all().get(),
-                    entry -> {
-                        return Erlang.mapEntry(
-                                Erlang.tuple(
-                                        new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                                        new OtpErlangInt(entry.getKey().partition())
-                                ),
-                                new OtpErlangLong(entry.getValue().offset())
-                        );
-
-                    }
+                    entry -> Erlang.mapEntry(
+                            Erlang.tuple(
+                                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
+                                    new OtpErlangInt(entry.getKey().partition())
+                            ),
+                            new OtpErlangLong(entry.getValue().offset())
+                    )
             );
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
@@ -243,12 +258,12 @@ public class Main implements Port {
 
                         var members = Erlang.toList(entry.getValue().members(), member -> {
                             var consumerId = member.consumerId();
-                            var assignments = Erlang.toList(member.assignment().topicPartitions(), assignment -> {
-                                return Erlang.tuple(
-                                        new OtpErlangBinary(assignment.topic().getBytes()),
-                                        new OtpErlangInt(assignment.partition())
-                                );
-                            });
+                            var assignments = Erlang.toList(
+                                    member.assignment().topicPartitions(), assignment -> Erlang.tuple(
+                                            new OtpErlangBinary(assignment.topic().getBytes()),
+                                            new OtpErlangInt(assignment.partition())
+                                    )
+                            );
 
                             return Erlang.tuple(new OtpErlangBinary(consumerId.getBytes()), assignments);
                         });

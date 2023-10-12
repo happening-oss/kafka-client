@@ -1,8 +1,14 @@
 package com.superology.kafka.port;
 
-import java.io.*;
-import java.util.concurrent.*;
-import com.ericsson.otp.erlang.*;
+import com.ericsson.otp.erlang.OtpErlangAtom;
+import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangLong;
+import com.ericsson.otp.erlang.OtpErlangObject;
+import java.io.DataOutputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /*
  * The output thread of a port program. This thread is responsible for sending
@@ -26,7 +32,7 @@ public final class Output implements Runnable {
     private BlockingQueue<Message> messages;
 
     private Output() {
-        messages = new LinkedBlockingQueue<Message>();
+        messages = new LinkedBlockingQueue<>();
     }
 
     public void emitCallResponse(Port.Command command, OtpErlangObject response) throws InterruptedException {
@@ -45,8 +51,9 @@ public final class Output implements Runnable {
 
     public void emit(OtpErlangObject message, boolean emitMetrics) throws InterruptedException {
         Long now = null;
-        if (emitMetrics)
+        if (emitMetrics) {
             now = System.nanoTime();
+        }
 
         messages.put(new Message(message, now));
     }
