@@ -7,10 +7,10 @@ package com.superology.kafka.port;
  * See {@link com.superology.kafka.admin.Main} for an example.
  */
 public interface Port {
-  // Invoked in the worker thread to run main port loop. After the function
-  // returns, the program will stop, using the returned value as the exit code.
-  public int run(Worker worker, Output output, Object[] args) throws Exception;
+    // Invoked in the worker thread to run main port loop. After the function
+    // returns, the program will stop, using the returned value as the exit code.
+    public int run(Worker worker, Output output, Object[] args) throws Exception;
 
-  record Command(String name, Object[] args, String ref) {
-  }
+    record Command(String name, Object[] args, String ref) {
+    }
 }
