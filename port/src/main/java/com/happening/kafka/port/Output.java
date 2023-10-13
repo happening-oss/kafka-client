@@ -38,8 +38,8 @@ public final class Output implements Runnable {
     public void emitCallResponse(Port.Command command, OtpErlangObject response) throws InterruptedException {
         this.emit(
                 Erlang.tuple(
-                        new OtpErlangAtom("$kafka_consumer_response"),
-                        new OtpErlangBinary(command.ref().getBytes()),
+                        Erlang.atom("$kafka_consumer_response"),
+                        Erlang.binary(command.ref()),
                         response
                 )
         );
@@ -76,9 +76,9 @@ public final class Output implements Runnable {
                     this.notify(
                             output,
                             Erlang.tuple(
-                                    new OtpErlangAtom("metrics"),
-                                    new OtpErlangLong(sentAt - sendingAt),
-                                    new OtpErlangLong(duration)
+                                    Erlang.atom("metrics"),
+                                    Erlang.longValue(sentAt - sendingAt),
+                                    Erlang.longValue(duration)
                             )
                     );
                 }

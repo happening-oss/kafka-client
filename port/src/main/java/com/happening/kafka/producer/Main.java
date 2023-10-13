@@ -1,18 +1,14 @@
 package com.happening.kafka.producer;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangDouble;
-import com.ericsson.otp.erlang.OtpErlangInt;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
+import com.happening.kafka.utils.ErrorUtils;
+import com.happening.kafka.utils.PropertiesUtils;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Properties;
@@ -40,7 +36,7 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = this.mapToProperties((Map<Object, Object>) args[0]);
+        var props = PropertiesUtils.toUtils((Map<Object, Object>) args[0]);
 
         try (var producer = new Producer(props)) {
             while (true) {
@@ -58,22 +54,22 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     producer.metrics(),
-                    entry -> {
+                    metricNameEntry -> {
                         OtpErlangObject value;
-                        var metricsValue = entry.getValue().metricValue();
+                        var metricsValue = metricNameEntry.getValue().metricValue();
                         if (metricsValue instanceof Double val) {
-                            value = Double.isNaN(val) ? Erlang.nil() : new OtpErlangDouble(val);
+                            value = Double.isNaN(val) ? Erlang.nil() : Erlang.doubleValue(val);
                         } else if (metricsValue instanceof Long val) {
-                            value = new OtpErlangLong(val);
+                            value = Erlang.longValue(val);
                         } else {
-                            value = new OtpErlangBinary(metricsValue.toString().getBytes());
+                            value = Erlang.binary(metricsValue.toString());
                         }
-                        return Erlang.mapEntry(new OtpErlangBinary(entry.getKey().name().getBytes()), value);
+                        return Erlang.mapEntry(Erlang.binary(metricNameEntry.getKey().name()), value);
                     }
             );
             response = Erlang.ok(map);
         } catch (Exception e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -90,11 +86,11 @@ public class Main implements Port {
         try {
             var list = Erlang.toList(
                     producer.partitionsFor(topic),
-                    entry -> new OtpErlangInt(entry.partition())
+                    entry -> Erlang.integer(entry.partition())
             );
             response = Erlang.ok(list);
         } catch (Exception e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -133,25 +129,19 @@ public class Main implements Port {
 
                 if (e != null) {
                     if (e instanceof TimeoutException) {
-                        payload = Erlang.error(new OtpErlangAtom("timeout"));
+                        payload = Erlang.error(Erlang.atom("timeout"));
                     } else {
-                        payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
+                        payload = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
                     }
                 } else {
                     payload = Erlang.ok(
-                            new OtpErlangInt(metadata.partition()),
-                            new OtpErlangLong(metadata.offset()),
-                            new OtpErlangLong(metadata.timestamp())
+                            Erlang.integer(metadata.partition()),
+                            Erlang.longValue(metadata.offset()),
+                            Erlang.longValue(metadata.timestamp())
                     );
                 }
                 try {
-                    output.emit(
-                            Erlang.tuple(
-                                    new OtpErlangAtom("on_completion"),
-                                    new OtpErlangBinary(callbackId),
-                                    payload
-                            )
-                    );
+                    output.emit(Erlang.tuple(Erlang.atom("on_completion"), Erlang.binary(callbackId), payload));
                 } catch (InterruptedException ie) {
                     throw new InterruptException(ie);
                 }
@@ -171,14 +161,6 @@ public class Main implements Port {
         );
 
         return null;
-    }
-
-    private Properties mapToProperties(Map<Object, Object> map) {
-        // need to remove nulls, because Properties doesn't support them
-        map.values().removeAll(Collections.singleton(null));
-        var result = new Properties();
-        result.putAll(map);
-        return result;
     }
 
     @FunctionalInterface

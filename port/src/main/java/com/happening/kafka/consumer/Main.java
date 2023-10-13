@@ -289,12 +289,10 @@ public class Main implements Port, ConsumerRebalanceListener {
             Subscription subscription
     ) {
 
-        consumer.partitionsFor(subscription.partition().topic()).forEach(
-                partitionInfo -> timestampsToSearch.put(
-                        this.toTopicPartition(partitionInfo),
-                        subscription.position()
-                )
-        );
+        consumer.partitionsFor(subscription.partition().topic())
+                .forEach(partitionInfo ->
+                        timestampsToSearch.put(this.toTopicPartition(partitionInfo), subscription.position())
+                );
     }
 
     private void maybeEmitCaughtUp() throws InterruptedException {
@@ -327,12 +325,12 @@ public class Main implements Port, ConsumerRebalanceListener {
         try {
             this.output.emit(
                     Erlang.tuple(
-                            new OtpErlangAtom(event),
+                            Erlang.atom(event),
                             Erlang.toList(
                                     partitions,
                                     partition -> Erlang.tuple(
-                                            new OtpErlangBinary(partition.topic().getBytes()),
-                                            new OtpErlangInt(partition.partition())
+                                            Erlang.binary(partition.topic()),
+                                            Erlang.integer(partition.partition())
                                     )
                             )
                     )

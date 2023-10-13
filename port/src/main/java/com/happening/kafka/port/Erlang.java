@@ -2,6 +2,8 @@ package com.happening.kafka.port;
 
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangDouble;
+import com.ericsson.otp.erlang.OtpErlangInt;
 import com.ericsson.otp.erlang.OtpErlangList;
 import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangMap;
@@ -11,6 +13,7 @@ import com.ericsson.otp.erlang.OtpInputStream;
 import com.ericsson.otp.erlang.OtpOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -54,12 +57,16 @@ public final class Erlang {
         return new OtpErlangAtom("nil");
     }
 
-    public static OtpErlangTuple tuple(OtpErlangObject... elements) {
-        return new OtpErlangTuple(elements);
-    }
-
     public static OtpErlangAtom ok() {
         return new OtpErlangAtom("ok");
+    }
+
+    public static OtpErlangAtom atom(String value) {
+        return new OtpErlangAtom(value);
+    }
+
+    public static OtpErlangAtom atom(boolean value) {
+        return new OtpErlangAtom(value);
     }
 
     public static OtpErlangTuple ok(OtpErlangObject... values) {
@@ -74,8 +81,32 @@ public final class Erlang {
         return tuple(new OtpErlangAtom("error"), value);
     }
 
-    public static <T> OtpErlangList toList(Iterable<T> iterable, Function<T, OtpErlangObject> mapper) {
-        var elements = StreamSupport.stream(iterable.spliterator(), false).map(mapper).toArray(OtpErlangObject[]::new);
+    public static OtpErlangTuple tuple(OtpErlangObject... elements) {
+        return new OtpErlangTuple(elements);
+    }
+
+    public static OtpErlangBinary binary(String value) {
+        return new OtpErlangBinary(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static OtpErlangBinary binary(byte[] value) {
+        return new OtpErlangBinary(value);
+    }
+
+    public static OtpErlangInt integer(int value) {
+        return new OtpErlangInt(value);
+    }
+
+    public static OtpErlangLong longValue(long value) {
+        return new OtpErlangLong(value);
+    }
+
+    public static OtpErlangDouble doubleValue(double value) {
+        return new OtpErlangDouble(value);
+    }
+
+    public static <T> OtpErlangList toList(Collection<T> iterable, Function<T, OtpErlangObject> mapper) {
+        var elements = iterable.stream().map(mapper).toArray(OtpErlangObject[]::new);
         return new OtpErlangList(elements);
     }
 
