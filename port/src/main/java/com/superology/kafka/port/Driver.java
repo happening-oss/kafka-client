@@ -1,7 +1,11 @@
 package com.superology.kafka.port;
 
-import java.io.*;
-import java.util.*;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /*
  * This class implements the generic behaviour of a Java port. The concrete
@@ -27,63 +31,64 @@ import java.util.*;
  * this is happening, and so these two jobs are running in separate threads.
  */
 public class Driver {
-  public static void run(String[] args, Port port) {
-    // Reading from the file descriptor 3, which is allocated by Elixir for input
-    try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
-      ArrayList<Object> decodedArgs = new ArrayList<>();
-      for (var arg : args)
-        decodedArgs.add(decodeArg(arg));
+    public static void run(String[] args, Port port) {
+        // Reading from the file descriptor 3, which is allocated by Elixir for input
+        try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
+            ArrayList<Object> decodedArgs = new ArrayList<>();
+            for (var arg : args) {
+                decodedArgs.add(decodeArg(arg));
+            }
 
-      var output = Output.start();
-      var worker = Worker.start(port, output, decodedArgs.toArray());
+            var output = Output.start();
+            var worker = Worker.start(port, output, decodedArgs.toArray());
 
-      try {
-        while (true) {
-          var command = takeCommand(input);
-          worker.sendCommand(command);
+            try {
+                while (true) {
+                    var command = takeCommand(input);
+                    worker.sendCommand(command);
+                }
+            } catch (EOFException e) {
+                // port owner has terminated
+
+                // try to stop gracefully by asking the worker to stop
+                worker.sendCommand(new Port.Command("stop", new Object[]{}, null));
+
+                // if the worker doesn't stop in 5 seconds, exit
+                Thread.sleep(5000);
+            }
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
         }
-      } catch (EOFException e) {
-        // port owner has terminated
-
-        // try to stop gracefully by asking the worker to stop
-        worker.sendCommand(new Port.Command("stop", new Object[] {}, null));
-
-        // if the worker doesn't stop in 5 seconds, exit
-        Thread.sleep(5000);
-      }
-    } catch (Exception e) {
-      System.err.println(e.getMessage());
-      e.printStackTrace();
-      System.exit(1);
     }
-  }
 
-  private static Object decodeArg(String encoded) throws Exception {
-    var bytes = java.util.Base64.getDecoder().decode(encoded);
-    return Erlang.decode(bytes);
-  }
+    private static Object decodeArg(String encoded) throws Exception {
+        var bytes = java.util.Base64.getDecoder().decode(encoded);
+        return Erlang.decode(bytes);
+    }
 
-  private static Port.Command takeCommand(DataInputStream input) throws Exception {
-    var length = readInt(input);
-    var bytes = readBytes(input, length);
-    var commandTuple = (Object[]) Erlang.decode(bytes);
-    return buildCommand(commandTuple);
-  }
+    private static Port.Command takeCommand(DataInputStream input) throws Exception {
+        var length = readInt(input);
+        var bytes = readBytes(input, length);
+        var commandTuple = (Object[]) Erlang.decode(bytes);
+        return buildCommand(commandTuple);
+    }
 
-  private static Port.Command buildCommand(Object[] commandTuple) {
-    @SuppressWarnings("unchecked")
-    var args = (Collection<Object>) commandTuple[1];
-    return new Port.Command((String) commandTuple[0], args.toArray(), (String) commandTuple[2]);
-  }
+    private static Port.Command buildCommand(Object[] commandTuple) {
+        @SuppressWarnings("unchecked")
+        var args = (Collection<Object>) commandTuple[1];
+        return new Port.Command((String) commandTuple[0], args.toArray(), (String) commandTuple[2]);
+    }
 
-  private static int readInt(DataInputStream input) throws IOException {
-    var bytes = readBytes(input, 4);
-    return new java.math.BigInteger(bytes).intValue();
-  }
+    private static int readInt(DataInputStream input) throws IOException {
+        var bytes = readBytes(input, 4);
+        return new java.math.BigInteger(bytes).intValue();
+    }
 
-  private static byte[] readBytes(DataInputStream input, int length) throws IOException {
-    var bytes = new byte[length];
-    input.readFully(bytes);
-    return bytes;
-  }
+    private static byte[] readBytes(DataInputStream input, int length) throws IOException {
+        var bytes = new byte[length];
+        input.readFully(bytes);
+        return bytes;
+    }
 }
