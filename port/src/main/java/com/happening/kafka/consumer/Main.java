@@ -1,15 +1,15 @@
-package com.superology.kafka.consumer;
+package com.happening.kafka.consumer;
 
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangBinary;
 import com.ericsson.otp.erlang.OtpErlangInt;
 import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
-import com.superology.kafka.port.Driver;
-import com.superology.kafka.port.Erlang;
-import com.superology.kafka.port.Output;
-import com.superology.kafka.port.Port;
-import com.superology.kafka.port.Worker;
+import com.happening.kafka.port.Driver;
+import com.happening.kafka.port.Erlang;
+import com.happening.kafka.port.Output;
+import com.happening.kafka.port.Port;
+import com.happening.kafka.port.Worker;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -32,7 +32,7 @@ import org.apache.kafka.common.TopicPartition;
  * are used for backpressure and commits. See {@link Backpressure} and {@link
  * Commits} for details.
  *
- * See {@link com.superology.kafka.port.Driver} for information about port
+ * See {@link com.happening.kafka.port.Driver} for information about port
  * mechanics, such as communication protocol and thread.
  */
 public class Main implements Port, ConsumerRebalanceListener {

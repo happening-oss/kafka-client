@@ -1,4 +1,4 @@
-package com.superology.kafka.port;
+package com.happening.kafka.port;
 
 import java.util.ArrayList;
 import java.util.Collection;

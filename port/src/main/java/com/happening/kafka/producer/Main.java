@@ -1,4 +1,4 @@
-package com.superology.kafka.producer;
+package com.happening.kafka.producer;
 
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangBinary;
@@ -6,11 +6,11 @@ import com.ericsson.otp.erlang.OtpErlangDouble;
 import com.ericsson.otp.erlang.OtpErlangInt;
 import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
-import com.superology.kafka.port.Driver;
-import com.superology.kafka.port.Erlang;
-import com.superology.kafka.port.Output;
-import com.superology.kafka.port.Port;
-import com.superology.kafka.port.Worker;
+import com.happening.kafka.port.Driver;
+import com.happening.kafka.port.Erlang;
+import com.happening.kafka.port.Output;
+import com.happening.kafka.port.Port;
+import com.happening.kafka.port.Worker;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;

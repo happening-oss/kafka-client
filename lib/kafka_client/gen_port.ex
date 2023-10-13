@@ -164,7 +164,7 @@ defmodule KafkaClient.GenPort do
         args: [
           "-cp",
           "#{Application.app_dir(:kafka_client)}/priv/kafka-client-1.0.jar",
-          "com.superology.kafka.#{main_class}" | encoded_args
+          "com.happening.kafka.#{main_class}" | encoded_args
         ]
       ]
     )

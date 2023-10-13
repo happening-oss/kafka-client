@@ -1,4 +1,4 @@
-package com.superology.kafka.consumer;
+package com.happening.kafka.consumer;
 
 import java.time.Duration;
 import java.util.Collection;

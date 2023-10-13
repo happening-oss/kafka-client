@@ -1,10 +1,10 @@
-package com.superology.kafka.port;
+package com.happening.kafka.port;
 
 /*
  * Specifies an interface which must be implemented by the concrete port
  * implementations.
  *
- * See {@link com.superology.kafka.admin.Main} for an example.
+ * See {@link com.happening.kafka.admin.Main} for an example.
  */
 public interface Port {
     // Invoked in the worker thread to run main port loop. After the function

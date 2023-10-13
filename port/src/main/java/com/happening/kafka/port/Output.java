@@ -1,4 +1,4 @@
-package com.superology.kafka.port;
+package com.happening.kafka.port;
 
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangBinary;
