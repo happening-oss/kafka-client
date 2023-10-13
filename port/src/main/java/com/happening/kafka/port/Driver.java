@@ -7,6 +7,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 
@@ -67,7 +68,7 @@ public class Driver {
     }
 
     private static Object decodeArg(String encoded) throws Exception {
-        var bytes = java.util.Base64.getDecoder().decode(encoded);
+        var bytes = Base64.getDecoder().decode(encoded);
         return Erlang.decode(bytes);
     }
 
