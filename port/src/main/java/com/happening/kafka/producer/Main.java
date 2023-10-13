@@ -20,6 +20,7 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
 
@@ -29,7 +30,7 @@ public class Main implements Port {
         Driver.run(args, new Main());
     }
 
-    private Map<String, Handler> dispatchMap = Map.ofEntries(
+    private final Map<String, Handler> dispatchMap = Map.ofEntries(
             Map.entry("partitions_for", this::partitionsFor),
             Map.entry("metrics", this::metrics),
             Map.entry("stop", this::stop),
@@ -39,12 +40,12 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = mapToProperties((Map<Object, Object>) args[0]);
+        var props = this.mapToProperties((Map<Object, Object>) args[0]);
 
         try (var producer = new Producer(props)) {
             while (true) {
                 var command = worker.take();
-                var exitCode = dispatchMap.get(command.name()).handle(producer, command, output);
+                var exitCode = this.dispatchMap.get(command.name()).handle(producer, command, output);
                 if (exitCode != null) {
                     return exitCode;
                 }
@@ -60,9 +61,9 @@ public class Main implements Port {
                     entry -> {
                         OtpErlangObject value;
                         var metricsValue = entry.getValue().metricValue();
-                        if (metricsValue instanceof java.lang.Double val) {
+                        if (metricsValue instanceof Double val) {
                             value = Double.isNaN(val) ? Erlang.nil() : new OtpErlangDouble(val);
-                        } else if (metricsValue instanceof java.lang.Long val) {
+                        } else if (metricsValue instanceof Long val) {
                             value = new OtpErlangLong(val);
                         } else {
                             value = new OtpErlangBinary(metricsValue.toString().getBytes());
@@ -106,9 +107,7 @@ public class Main implements Port {
         return 0;
     }
 
-    private Integer send(
-            Producer producer, Port.Command command, Output output
-    ) {
+    private Integer send(Producer producer, Port.Command command, Output output) {
         @SuppressWarnings("unchecked")
         var record = (Map<String, Object>) command.args()[0];
 
@@ -154,7 +153,7 @@ public class Main implements Port {
                             )
                     );
                 } catch (InterruptedException ie) {
-                    throw new org.apache.kafka.common.errors.InterruptException(ie);
+                    throw new InterruptException(ie);
                 }
             };
         }
@@ -189,7 +188,7 @@ public class Main implements Port {
 }
 
 final class Producer extends KafkaProducer<byte[], byte[]> {
-    public Producer(Properties properties) {
+    Producer(Properties properties) {
         super(properties);
     }
 }

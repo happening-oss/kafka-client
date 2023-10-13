@@ -6,7 +6,9 @@ To get started, follow instruction from [README](README.md) to install all the t
 
 ### IntelliJ IDEA setup
 
-For IntelliJ, you will need our custom code style. To set it up, download [happening-settings.zip](https://github.com/happening-oss/kafka-client/files/12882697/happening-settings.zip) file and use `Import Settings` action in IntelliJ to import it. After that, go to `Settings -> Editor -> Code Style` and select `Happening-Java` scheme.
+For IntelliJ, you will need our custom code style. To set it up, download [happening-settings.zip](https://github.com/happening-oss/kafka-client/files/12898187/happening-settings.zip)
+file and use `Import Settings` action in IntelliJ to import it. After that, go to `Settings -> Editor -> Code Style` and select `Happening-Java` scheme to set correct code style. Also,
+go to `Settings -> Editor -> Inspections` and select `Happening-Java` scheme to set correct inspections.
 
 ### VSCode setup
 

@@ -37,7 +37,7 @@ public class Main implements Port {
         Driver.run(args, new Main());
     }
 
-    private Map<String, Handler> dispatchMap = Map.ofEntries(
+    private final Map<String, Handler> dispatchMap = Map.ofEntries(
             Map.entry("stop", this::stop),
             Map.entry("describe_topics", this::describeTopics),
             Map.entry("describe_topics_config", this::describeTopicsConfig),
@@ -55,12 +55,12 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = mapToProperties((Map<Object, Object>) args[0]);
+        var props = this.mapToProperties((Map<Object, Object>) args[0]);
 
         try (var admin = Admin.create(props)) {
             while (true) {
                 var command = worker.take();
-                var exitCode = dispatchMap.get(command.name()).handle(admin, command, output);
+                var exitCode = this.dispatchMap.get(command.name()).handle(admin, command, output);
                 if (exitCode != null) {
                     return exitCode;
                 }

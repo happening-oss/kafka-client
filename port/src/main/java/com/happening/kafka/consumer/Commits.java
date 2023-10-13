@@ -1,5 +1,6 @@
 package com.happening.kafka.consumer;
 
+import java.io.Serial;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
@@ -11,43 +12,43 @@ import org.apache.kafka.common.TopicPartition;
  * commits and periodically flushes them to Kafka.
  */
 final class Commits {
-    PartitionOffsets pendingCommits = new PartitionOffsets();
-    Consumer consumer;
-    long commitIntervalNs;
-    long lastCommit;
+    private final PartitionOffsets pendingCommits = new PartitionOffsets();
+    private final Consumer consumer;
+    private final long commitIntervalNs;
+    private long lastCommit;
 
-    public Commits(Consumer consumer, long commitIntervalMs) {
+    Commits(Consumer consumer, long commitIntervalMs) {
         this.consumer = consumer;
-        this.commitIntervalNs = java.time.Duration.ofMillis(commitIntervalMs).toNanos();
-        this.lastCommit = System.nanoTime() - commitIntervalNs;
+        this.commitIntervalNs = Duration.ofMillis(commitIntervalMs).toNanos();
+        this.lastCommit = System.nanoTime() - this.commitIntervalNs;
     }
 
-    public void add(TopicPartition partition, long offset) {
-        pendingCommits.put(partition, new OffsetAndMetadata(offset + 1));
+    void add(TopicPartition partition, long offset) {
+        this.pendingCommits.put(partition, new OffsetAndMetadata(offset + 1));
     }
 
-    public void flush(boolean sync) {
+    void flush(boolean sync) {
         var now = System.nanoTime();
-        if (now - lastCommit >= commitIntervalNs) {
-            pendingCommits.keySet().retainAll(consumer.assignment());
-            if (!pendingCommits.isEmpty()) {
+        if (now - this.lastCommit >= this.commitIntervalNs) {
+            this.pendingCommits.keySet().retainAll(this.consumer.assignment());
+            if (!this.pendingCommits.isEmpty()) {
                 if (sync) {
-                    consumer.commitSync(pendingCommits);
+                    this.consumer.commitSync(this.pendingCommits);
                 } else {
-                    consumer.commitAsync(pendingCommits, null);
+                    this.consumer.commitAsync(this.pendingCommits, null);
                 }
 
-                pendingCommits.clear();
-                lastCommit = now;
+                this.pendingCommits.clear();
+                this.lastCommit = now;
             }
         }
     }
 
-    public void partitionsRevoked(Collection<TopicPartition> partitions) {
+    void partitionsRevoked(Collection<TopicPartition> partitions) {
         // We're losing some partitions, but there's still time to commit the offsets.
-        PartitionOffsets commits = new PartitionOffsets();
+        var commits = new PartitionOffsets();
         for (var partition : partitions) {
-            var offset = pendingCommits.remove(partition);
+            var offset = this.pendingCommits.remove(partition);
             if (offset != null) {
                 commits.put(partition, offset);
             }
@@ -55,21 +56,20 @@ final class Commits {
 
         // Sync committing, because we want to block the callback until we commit.
         try {
-            consumer.commitSync(commits, Duration.ofSeconds(5));
+            this.consumer.commitSync(commits, Duration.ofSeconds(5));
         } catch (Exception e) {
             // An exception here is not tragic, it just means we failed to commit during a
             // rebalance. Therefore we'll just swallow and keep going.
         }
     }
 
-    public void partitionsLost(Collection<TopicPartition> partitions) {
+    void partitionsLost(Collection<TopicPartition> partitions) {
         // We can't commit here since the partitions have already been lost.
-        pendingCommits.keySet().removeAll(partitions);
+        this.pendingCommits.keySet().removeAll(partitions);
     }
 
-    static final class PartitionOffsets extends HashMap<TopicPartition, OffsetAndMetadata> {
-        public PartitionOffsets() {
-            super();
-        }
+    private static final class PartitionOffsets extends HashMap<TopicPartition, OffsetAndMetadata> {
+        @Serial
+        private static final long serialVersionUID = 6778668172812382107L;
     }
 }

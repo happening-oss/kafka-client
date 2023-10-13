@@ -9,6 +9,7 @@ import com.ericsson.otp.erlang.OtpErlangObject;
 import com.ericsson.otp.erlang.OtpErlangTuple;
 import com.ericsson.otp.erlang.OtpInputStream;
 import com.ericsson.otp.erlang.OtpOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -26,10 +27,13 @@ import java.util.stream.StreamSupport;
  * Most of the heavy lifting is powered by JInterface
  * (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html).
  */
-public class Erlang {
+public final class Erlang {
+    private Erlang() {
+    }
+
     // This is basically a Java version of Erlang's term_to_binary.
-    public static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
-        try (var otpOutStream = new OtpOutputStream(erlangTerm); var byteStream = new java.io.ByteArrayOutputStream()) {
+    static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
+        try (var otpOutStream = new OtpOutputStream(erlangTerm); var byteStream = new ByteArrayOutputStream()) {
             // OtpOutputStream.writeToAndFlush produces the binary without the leading
             // version number byte (131), so we need to include it ourselves.
             //
@@ -110,7 +114,7 @@ public class Erlang {
      * - tuple is decoded as Object[]
      * - map is decoded as Map<Object, Object>
      */
-    public static Object decode(byte[] encoded) throws Exception {
+    static Object decode(byte[] encoded) throws Exception {
         try (var inputStream = new OtpInputStream(encoded)) {
             return fromErlang(inputStream.read_any());
         }

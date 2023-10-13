@@ -1,11 +1,14 @@
 package com.happening.kafka.port;
 
+import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /*
  * This class implements the generic behaviour of a Java port. The concrete
@@ -34,7 +37,7 @@ public class Driver {
     public static void run(String[] args, Port port) {
         // Reading from the file descriptor 3, which is allocated by Elixir for input
         try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
-            ArrayList<Object> decodedArgs = new ArrayList<>();
+            List<Object> decodedArgs = new ArrayList<>();
             for (var arg : args) {
                 decodedArgs.add(decodeArg(arg));
             }
@@ -81,12 +84,12 @@ public class Driver {
         return new Port.Command((String) commandTuple[0], args.toArray(), (String) commandTuple[2]);
     }
 
-    private static int readInt(DataInputStream input) throws IOException {
+    private static int readInt(DataInput input) throws IOException {
         var bytes = readBytes(input, 4);
-        return new java.math.BigInteger(bytes).intValue();
+        return new BigInteger(bytes).intValue();
     }
 
-    private static byte[] readBytes(DataInputStream input, int length) throws IOException {
+    private static byte[] readBytes(DataInput input, int length) throws IOException {
         var bytes = new byte[length];
         input.readFully(bytes);
         return bytes;
