@@ -119,4 +119,4 @@ See documentation of the following modules for detailed description:
 
 ## Contributing
 
-See [CONTRIBUTING.md]
+See [CONTRIBUTING.md](CONTRIBUTING.md)
