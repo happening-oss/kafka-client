@@ -1,17 +1,44 @@
 # KafkaClient
 
-## Compilation
+Elixir wrapper around the [Apache Kafka Java client library](https://javadoc.io/doc/org.apache.kafka/kafka-clients/latest/index.html).
 
-1. Install asdf version manager and add the following plugins: elixir, erlang, java, maven
-2. asdf install
-3. mix deps.get
-4. mix compile
+This wrapper is created to overcome deficiencies in the existing BEAM Kafka clients. Adapting those clients was considered, but it was estimated that implementing some of the features would be tricky to implement and maintain, since Kafka delegates a lot of complexity to the client, especially in the consumer part.
 
-## Running
+Therefore, this library takes a different approach. Instead of spending a lot of effort working on the BEAM client, we reuse the official Kafka client, which is developed, tested, and released together with Kafka itself. This gives us the easy access to the latest & greatest features without imposing a high development and maintenance burden.
 
-1. Make sure there is a local kafka instance running on the port 9092.
-2. `iex -S mix run -e TestConsumer.start`
-3. In a separate terminal window publish some messages on the topic `mytopic`, and check that they are printed in the consumer window.
+## Features
+
+- exposes Java client API to Elixir
+- finer-grained concurrency on top of the consumer API
+- at least once processing guarantees
+- batching and backpressure
+- topic consuming (consume all partitions of a topic)
+- draining on shutdown
+
+## Downsides
+
+- only a small portion of API is exposed
+- requires Java runtime
+- adds a latency overhead due to extra hop between Java and BEAM
+- still in early days, so bugs may exist, and the API might change radically
+
+## Usage
+
+The required tools and versions are specified in the .tool-versions file. You can use the [asdf version manager](https://asdf-vm.com/) to install them. You can also use newer versions in your own projects (unless there are some breaking changes).
+
+You also need to run Kafka and Zookeeper. This project includes the docker-compose.yml file which starts these services.
+
+This library is currently not published to hex.pm, so you need to add it as a github dependency:
+
+```elixir
+# in mix exs
+defp deps do
+  [
+    {:kafka_client, github: "happening-oss/kafka-client"},
+    ...
+  ]
+end
+```
 
 ## Examples
 
@@ -89,3 +116,7 @@ See documentation of the following modules for detailed description:
 - [KafkaClient.Consumer](lib/kafka_client/consumer.ex)
 - [KafkaClient.Consumer.Poller](lib/kafka_client/consumer/poller.ex)
 - [KafkaClient.Consumer.Stream](lib/kafka_client/consumer/stream.ex)
+
+## Contributing
+
+See [CONTRIBUTING.md]

@@ -62,7 +62,7 @@ defmodule KafkaClient.AdminTest do
 
   test "list_end_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
-    assert error == "This server does not host this topic-partition."
+    assert error =~ "metadata for topic `unknown_topic` could not be found"
 
     topic1 = new_test_topic()
     topic2 = new_test_topic()
@@ -85,7 +85,7 @@ defmodule KafkaClient.AdminTest do
 
   test "list_earliest_offsets", ctx do
     assert {:error, error} = Admin.list_end_offsets(ctx.admin, [{"unknown_topic", 0}])
-    assert error == "This server does not host this topic-partition."
+    assert error =~ "metadata for topic `unknown_topic` could not be found"
 
     topic1 = new_test_topic()
     topic2 = new_test_topic()
@@ -154,14 +154,20 @@ defmodule KafkaClient.AdminTest do
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
     sync_produce!(topic, partition: 0)
-    last_processed_offset_partition_0 = hd(process_next_batch!(topic, 0).records).offset
+    last_processed_offset_partition_0 = Enum.at(process_next_batch!(topic, 0).records, -1).offset
 
     stop_supervised!(consumer.child_id)
 
     group_id = consumer.group_id
     topics = [{topic, 0}, {topic, 1}]
-    assert {:ok, committed} = Admin.list_consumer_group_offsets(ctx.admin, group_id, topics)
-    assert committed == %{{topic, 0} => last_processed_offset_partition_0 + 1, {topic, 1} => nil}
+    assert {:ok, committed} = Admin.list_consumer_group_offsets(ctx.admin, %{group_id => topics})
+
+    assert committed == %{
+             group_id => %{
+               {topic, 0} => last_processed_offset_partition_0 + 1,
+               {topic, 1} => nil
+             }
+           }
   end
 
   test "stop", ctx do

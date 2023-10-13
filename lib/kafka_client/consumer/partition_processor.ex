@@ -90,10 +90,11 @@ defmodule KafkaClient.Consumer.PartitionProcessor do
   end
 
   defp next_message(parent, timeout \\ :infinity) do
-    # Implements a so called "select receive" pattern, placing higher priority on drain and parent
-    # exit messages. This allows us to first handle the high prio messages, even though they were
-    # placed into the mailbox after the regular messages. This is the reason why we can't use
-    # GenServer, but instead have to roll our own server process.
+    # Implements a so called "selective receive" pattern
+    # (https://learnyousomeerlang.com/more-on-multiprocessing#selective-receives), placing higher
+    # priority on drain and parent exit messages. This allows us to first handle the high prio
+    # messages, even though they were placed into the mailbox after the regular messages. This is
+    # the reason why we can't use GenServer, but instead have to roll our own server process.
 
     receive do
       # try to fetch high prio messages from the mailbox if they exist

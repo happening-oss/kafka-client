@@ -20,8 +20,8 @@ jobs:
       - name: Install Elixir
         uses: erlef/setup-beam@v1
         with:
-          otp-version: 25.0
-          elixir-version: 1.13.4
+          otp-version: 26.1
+          elixir-version: 1.15.6
 
       - name: Install Java
         uses: actions/setup-java@v2
@@ -73,7 +73,13 @@ jobs:
         run: MIX_ENV=test mix compile --warnings-as-errors
 
       - name: Check formatting
-        run: MIX_ENV=test mix format --check-formatted
+        run: |
+          # check Elixir formatting
+          MIX_ENV=test mix format --check-formatted
+
+          # check Java formatting
+          cd port
+          mvn spotless:check
 
       - name: Run tests
         # hacky way to avoid failing on flaky tests
