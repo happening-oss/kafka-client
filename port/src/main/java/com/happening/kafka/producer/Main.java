@@ -108,13 +108,17 @@ public class Main implements Port {
         var record = (Map<String, Object>) command.args()[0];
 
         var headers = new LinkedList<Header>();
-        for (@SuppressWarnings("unchecked")
-        var header : (Collection<Object[]>) record.get("headers")) {
+
+        @SuppressWarnings("unchecked")
+        var recordHeaders = (Collection<Object[]>) record.get("headers");
+        for (var header : recordHeaders) {
             headers.add(new Header() {
+                @Override
                 public String key() {
                     return (String) header[0];
                 }
 
+                @Override
                 public byte[] value() {
                     return (byte[]) header[1];
                 }

@@ -105,8 +105,8 @@ public final class Erlang {
         return new OtpErlangDouble(value);
     }
 
-    public static <T> OtpErlangList toList(Collection<T> iterable, Function<T, OtpErlangObject> mapper) {
-        var elements = iterable.stream().map(mapper).toArray(OtpErlangObject[]::new);
+    public static <T> OtpErlangList toList(Iterable<T> iterable, Function<T, OtpErlangObject> mapper) {
+        var elements = StreamSupport.stream(iterable.spliterator(), false).map(mapper).toArray(OtpErlangObject[]::new);
         return new OtpErlangList(elements);
     }
 
@@ -122,6 +122,15 @@ public final class Erlang {
         }
 
         return erlangMap;
+    }
+
+    @SafeVarargs
+    public static OtpErlangMap mapFromEntries(Map.Entry<OtpErlangObject, OtpErlangObject>... entries) {
+        var map = new OtpErlangMap();
+        for (Map.Entry<OtpErlangObject, OtpErlangObject> entry : entries) {
+            map.put(entry.getKey(), entry.getValue());
+        }
+        return map;
     }
 
     public static Map.Entry<OtpErlangObject, OtpErlangObject> mapEntry(
@@ -168,7 +177,7 @@ public final class Erlang {
         }
 
         if (value instanceof OtpErlangBinary) {
-            return new String(((OtpErlangBinary) value).binaryValue());
+            return new String(((OtpErlangBinary) value).binaryValue(), StandardCharsets.UTF_8);
         }
 
         if (value instanceof OtpErlangLong) {

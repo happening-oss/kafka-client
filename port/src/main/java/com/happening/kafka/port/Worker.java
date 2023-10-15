@@ -8,7 +8,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 /*
  * The worker thread of a port program. See {@link Driver} for details.
  */
-public class Worker implements Runnable {
+public final class Worker implements Runnable {
     static Worker start(Port port, Output output, Object[] args) {
         var worker = new Worker(port, output, args);
 

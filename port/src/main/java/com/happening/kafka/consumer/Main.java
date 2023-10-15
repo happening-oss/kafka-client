@@ -1,19 +1,15 @@
 package com.happening.kafka.consumer;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangInt;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
+import com.happening.kafka.utils.PropertiesUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,12 +104,13 @@ public class Main implements Port, ConsumerRebalanceListener {
 
     private Opts opts(Object[] args) {
         @SuppressWarnings("unchecked")
-        var consumerProps = this.mapToProperties((Map<Object, Object>) args[0]);
+        var consumerProps = PropertiesUtils.toUtils((Map<Object, Object>) args[0]);
 
         var subscriptions = new ArrayList<Subscription>();
 
-        for (@SuppressWarnings("unchecked")
-        var subscription : (Iterable<Object[]>) args[1]) {
+        @SuppressWarnings("unchecked")
+        var argsSubscriptions = (Iterable<Object[]>) args[1];
+        for (var subscription : argsSubscriptions) {
             var topic = (String) subscription[0];
             var partitionNo = (int) subscription[1];
             var partition = new TopicPartition(topic, partitionNo);
@@ -142,8 +139,9 @@ public class Main implements Port, ConsumerRebalanceListener {
     }
 
     private Integer ack(Consumer consumer, Port.Command command) throws InterruptedException {
-        for (@SuppressWarnings("unchecked")
-        var record : (Iterable<List<Object>>) command.args()[0]) {
+        @SuppressWarnings("unchecked")
+        var records = (Iterable<List<Object>>) command.args()[0];
+        for (var record : records) {
             var array = record.toArray();
             var ack = new ConsumerPosition(toTopicPartition(array), toLong(array[2]));
 
@@ -289,15 +287,14 @@ public class Main implements Port, ConsumerRebalanceListener {
             Subscription subscription
     ) {
 
-        consumer.partitionsFor(subscription.partition().topic())
-                .forEach(partitionInfo ->
-                        timestampsToSearch.put(this.toTopicPartition(partitionInfo), subscription.position())
-                );
+        consumer.partitionsFor(subscription.partition().topic()).forEach(
+                partitionInfo -> timestampsToSearch.put(this.toTopicPartition(partitionInfo), subscription.position())
+        );
     }
 
     private void maybeEmitCaughtUp() throws InterruptedException {
         if (this.endOffsets.isEmpty()) {
-            this.output.emit(new OtpErlangAtom("caught_up"));
+            this.output.emit(Erlang.atom("caught_up"));
             this.endOffsets = null;
         }
     }
@@ -344,29 +341,21 @@ public class Main implements Port, ConsumerRebalanceListener {
         var headers = Erlang.toList(
                 record.headers(),
                 header -> Erlang.tuple(
-                        new OtpErlangBinary(header.key().getBytes()),
-                        new OtpErlangBinary(header.value())
+                        Erlang.binary(header.key()),
+                        Erlang.binary(header.value())
                 )
         );
 
         return Erlang.tuple(
-                new OtpErlangAtom("record"),
-                new OtpErlangBinary(record.topic().getBytes()),
-                new OtpErlangInt(record.partition()),
-                new OtpErlangLong(record.offset()),
-                new OtpErlangLong(record.timestamp()),
+                Erlang.atom("record"),
+                Erlang.binary(record.topic()),
+                Erlang.integer(record.partition()),
+                Erlang.longValue(record.offset()),
+                Erlang.longValue(record.timestamp()),
                 headers,
-                record.key() == null ? Erlang.nil() : new OtpErlangBinary(record.key()),
-                record.value() == null ? Erlang.nil() : new OtpErlangBinary(record.value())
+                record.key() == null ? Erlang.nil() : Erlang.binary(record.key()),
+                record.value() == null ? Erlang.nil() : Erlang.binary(record.value())
         );
-    }
-
-    private Properties mapToProperties(Map<Object, Object> map) {
-        // need to remove nulls, because Properties doesn't support them
-        map.values().removeAll(Collections.singleton(null));
-        var result = new Properties();
-        result.putAll(map);
-        return result;
     }
 
     private TopicPartition toTopicPartition(PartitionInfo partitionInfo) {
