@@ -1,13 +1,12 @@
 package com.happening.kafka.producer;
 
 import com.ericsson.otp.erlang.OtpErlangObject;
+import com.happening.kafka.Utils;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
-import com.happening.kafka.utils.ErrorUtils;
-import com.happening.kafka.utils.PropertiesUtils;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.Map;
@@ -36,7 +35,7 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = PropertiesUtils.toProperties((Map<Object, Object>) args[0]);
+        var props = Utils.toProperties((Map<Object, Object>) args[0]);
 
         try (var producer = new Producer(props)) {
             while (true) {
@@ -69,7 +68,7 @@ public class Main implements Port {
             );
             response = Erlang.ok(map);
         } catch (Exception e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -90,7 +89,7 @@ public class Main implements Port {
             );
             response = Erlang.ok(list);
         } catch (Exception e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -135,7 +134,7 @@ public class Main implements Port {
                     if (e instanceof TimeoutException) {
                         payload = Erlang.error(Erlang.atom("timeout"));
                     } else {
-                        payload = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+                        payload = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
                     }
                 } else {
                     payload = Erlang.ok(

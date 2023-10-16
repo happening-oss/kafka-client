@@ -1,8 +1,5 @@
 package com.happening.kafka.port;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import java.io.DataOutputStream;
 import java.io.FileOutputStream;

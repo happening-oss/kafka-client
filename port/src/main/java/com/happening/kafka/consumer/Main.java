@@ -1,12 +1,12 @@
 package com.happening.kafka.consumer;
 
 import com.ericsson.otp.erlang.OtpErlangObject;
+import com.happening.kafka.Utils;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
-import com.happening.kafka.utils.PropertiesUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -104,7 +104,7 @@ public class Main implements Port, ConsumerRebalanceListener {
 
     private Opts opts(Object[] args) {
         @SuppressWarnings("unchecked")
-        var consumerProps = PropertiesUtils.toProperties((Map<Object, Object>) args[0]);
+        var consumerProps = Utils.toProperties((Map<Object, Object>) args[0]);
 
         var subscriptions = new ArrayList<Subscription>();
 

@@ -2,13 +2,12 @@ package com.happening.kafka.admin;
 
 import com.ericsson.otp.erlang.OtpErlangMap;
 import com.ericsson.otp.erlang.OtpErlangObject;
+import com.happening.kafka.Utils;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
-import com.happening.kafka.utils.ErrorUtils;
-import com.happening.kafka.utils.PropertiesUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -52,7 +51,7 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = PropertiesUtils.toProperties((Map<Object, Object>) args[0]);
+        var props = Utils.toProperties((Map<Object, Object>) args[0]);
 
         try (var admin = Admin.create(props)) {
             while (true) {
@@ -99,7 +98,7 @@ public class Main implements Port {
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -134,7 +133,7 @@ public class Main implements Port {
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -166,7 +165,7 @@ public class Main implements Port {
             );
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -198,7 +197,7 @@ public class Main implements Port {
             );
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -224,7 +223,7 @@ public class Main implements Port {
 
             response = Erlang.ok(list);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -271,7 +270,7 @@ public class Main implements Port {
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -294,7 +293,7 @@ public class Main implements Port {
                         try {
                             groupDeletionFutureEntry.getValue().get();
                         } catch (Exception e) {
-                            result = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+                            result = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
                         }
 
                         return Erlang.mapEntry(Erlang.binary(groupDeletionFutureEntry.getKey()), result);
@@ -304,7 +303,7 @@ public class Main implements Port {
             response = Erlang.ok(map);
 
         } catch (Exception e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -363,7 +362,7 @@ public class Main implements Port {
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(Erlang.binary(ErrorUtils.getMessage(e)));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -390,7 +389,7 @@ public class Main implements Port {
             admin.createTopics(newTopics).all().get();
             output.emitCallResponse(command, Erlang.ok());
         } catch (ExecutionException e) {
-            output.emitCallResponse(command, Erlang.error(Erlang.binary(ErrorUtils.getMessage(e))));
+            output.emitCallResponse(command, Erlang.error(Erlang.binary(Utils.getErrorMessage(e))));
         }
 
         return null;
@@ -403,7 +402,7 @@ public class Main implements Port {
             admin.deleteTopics(topics).all().get();
             output.emitCallResponse(command, Erlang.ok());
         } catch (ExecutionException e) {
-            output.emitCallResponse(command, Erlang.error(Erlang.binary(ErrorUtils.getMessage(e))));
+            output.emitCallResponse(command, Erlang.error(Erlang.binary(Utils.getErrorMessage(e))));
         }
 
         return null;
