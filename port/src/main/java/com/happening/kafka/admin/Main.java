@@ -52,7 +52,7 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = PropertiesUtils.toUtils((Map<Object, Object>) args[0]);
+        var props = PropertiesUtils.toProperties((Map<Object, Object>) args[0]);
 
         try (var admin = Admin.create(props)) {
             while (true) {

@@ -104,7 +104,7 @@ public class Main implements Port, ConsumerRebalanceListener {
 
     private Opts opts(Object[] args) {
         @SuppressWarnings("unchecked")
-        var consumerProps = PropertiesUtils.toUtils((Map<Object, Object>) args[0]);
+        var consumerProps = PropertiesUtils.toProperties((Map<Object, Object>) args[0]);
 
         var subscriptions = new ArrayList<Subscription>();
 

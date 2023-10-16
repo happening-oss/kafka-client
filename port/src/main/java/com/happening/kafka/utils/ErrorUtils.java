@@ -1,6 +1,6 @@
 package com.happening.kafka.utils;
 
-public class ErrorUtils {
+public final class ErrorUtils {
 
     private ErrorUtils() {
     }
