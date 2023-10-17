@@ -34,7 +34,10 @@ import java.util.List;
  * longer for very large messages. We don't want to pause the worker logic while
  * this is happening, and so these two jobs are running in separate threads.
  */
-public class Driver {
+public final class Driver {
+    private Driver() {
+    }
+
     public static void run(String[] args, Port port) {
         // Reading from the file descriptor 3, which is allocated by Elixir for input
         try (var input = new DataInputStream(new FileInputStream("/dev/fd/3"))) {
@@ -95,4 +98,5 @@ public class Driver {
         input.readFully(bytes);
         return bytes;
     }
+
 }

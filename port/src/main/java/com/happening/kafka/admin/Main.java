@@ -1,11 +1,8 @@
 package com.happening.kafka.admin;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangInt;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangMap;
 import com.ericsson.otp.erlang.OtpErlangObject;
+import com.happening.kafka.Utils;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
@@ -13,12 +10,10 @@ import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.DeleteConsumerGroupsOptions;
@@ -29,6 +24,7 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.common.TopicCollection;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.TopicPartitionInfo;
 import org.apache.kafka.common.config.ConfigResource;
 
 public class Main implements Port {
@@ -55,7 +51,7 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = this.mapToProperties((Map<Object, Object>) args[0]);
+        var props = Utils.toProperties((Map<Object, Object>) args[0]);
 
         try (var admin = Admin.create(props)) {
             while (true) {
@@ -77,10 +73,7 @@ public class Main implements Port {
     ) throws InterruptedException, ExecutionException {
         output.emitCallResponse(
                 command,
-                Erlang.toList(
-                        admin.listTopics().names().get(),
-                        name -> new OtpErlangBinary(name.getBytes())
-                )
+                Erlang.toList(admin.listTopics().names().get(), Erlang::binary)
         );
 
         return null;
@@ -94,19 +87,18 @@ public class Main implements Port {
             var descriptions = admin.describeTopics(TopicCollection.ofTopicNames(topics));
             var map = Erlang.toMap(
                     descriptions.allTopicNames().get(),
-                    entry -> {
-                        var topic = new OtpErlangBinary(entry.getKey().getBytes());
-                        var partitions = Erlang.toList(
-                                entry.getValue().partitions(),
-                                partition -> new OtpErlangInt(partition.partition())
-                        );
-                        return Erlang.mapEntry(topic, partitions);
+                    stringTopicDescriptionEntry -> {
+                        var topic = Erlang.binary(stringTopicDescriptionEntry.getKey());
+                        var partitions = stringTopicDescriptionEntry.getValue().partitions().stream().map(
+                                TopicPartitionInfo::partition
+                        ).toList();
+                        return Erlang.mapEntry(topic, Erlang.toList(partitions, Erlang::integer));
                     }
             );
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -125,21 +117,15 @@ public class Main implements Port {
 
             var map = Erlang.toMap(
                     admin.describeConfigs(configs).all().get(),
-                    conf -> {
-                        conf.getValue().entries();
-                        var topic = new OtpErlangBinary(conf.getKey().name().getBytes());
+                    configResourceConfigEntry -> {
+                        var topic = Erlang.binary(configResourceConfigEntry.getKey().name());
                         OtpErlangObject params = Erlang.toList(
-                                conf.getValue().entries(),
-                                entry -> {
-                                    var config = new OtpErlangMap();
-                                    config.put(new OtpErlangAtom("name"), new OtpErlangBinary(entry.name().getBytes()));
-                                    config.put(
-                                            new OtpErlangAtom("value"), new OtpErlangBinary(entry.value().getBytes())
-                                    );
-                                    config.put(new OtpErlangAtom("is_default"), new OtpErlangAtom(entry.isDefault()));
-
-                                    return config;
-                                }
+                                configResourceConfigEntry.getValue().entries(),
+                                configEntry -> Erlang.mapFromEntries(
+                                        Erlang.mapEntry(Erlang.atom("name"), Erlang.binary(configEntry.name())),
+                                        Erlang.mapEntry(Erlang.atom("value"), Erlang.binary(configEntry.value())),
+                                        Erlang.mapEntry(Erlang.atom("is_default"), Erlang.atom(configEntry.isDefault()))
+                                )
                         );
                         return Erlang.mapEntry(topic, params);
                     }
@@ -147,7 +133,7 @@ public class Main implements Port {
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -156,10 +142,11 @@ public class Main implements Port {
     }
 
     private Integer listEndOffsets(Admin admin, Port.Command command, Output output) throws InterruptedException {
-
         var topicPartitionOffsets = new HashMap<TopicPartition, OffsetSpec>();
-        for (@SuppressWarnings("unchecked")
-        var topicPartitionTuple : ((Iterable<Object[]>) command.args()[0])) {
+
+        @SuppressWarnings("unchecked")
+        var topicPartitionTuples = (Iterable<Object[]>) command.args()[0];
+        for (var topicPartitionTuple : topicPartitionTuples) {
             var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
             topicPartitionOffsets.put(topicPartition, OffsetSpec.latest());
         }
@@ -168,17 +155,17 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.listOffsets(topicPartitionOffsets).all().get(),
-                    entry -> Erlang.mapEntry(
+                    topicPartitionOffsetsEntry -> Erlang.mapEntry(
                             Erlang.tuple(
-                                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                                    new OtpErlangInt(entry.getKey().partition())
+                                    Erlang.binary(topicPartitionOffsetsEntry.getKey().topic()),
+                                    Erlang.integer(topicPartitionOffsetsEntry.getKey().partition())
                             ),
-                            new OtpErlangLong(entry.getValue().offset())
+                            Erlang.longValue(topicPartitionOffsetsEntry.getValue().offset())
                     )
             );
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -187,10 +174,11 @@ public class Main implements Port {
     }
 
     private Integer listEarliestOffsets(Admin admin, Port.Command command, Output output) throws InterruptedException {
-
         var topicPartitionOffsets = new HashMap<TopicPartition, OffsetSpec>();
-        for (@SuppressWarnings("unchecked")
-        var topicPartitionTuple : ((Iterable<Object[]>) command.args()[0])) {
+
+        @SuppressWarnings("unchecked")
+        var topicPartitionTuples = (Iterable<Object[]>) command.args()[0];
+        for (var topicPartitionTuple : topicPartitionTuples) {
             var topicPartition = new TopicPartition((String) topicPartitionTuple[0], (int) topicPartitionTuple[1]);
             topicPartitionOffsets.put(topicPartition, OffsetSpec.earliest());
         }
@@ -199,17 +187,17 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.listOffsets(topicPartitionOffsets).all().get(),
-                    entry -> Erlang.mapEntry(
+                    topicPartitionOffsetsEntry -> Erlang.mapEntry(
                             Erlang.tuple(
-                                    new OtpErlangBinary(entry.getKey().topic().getBytes()),
-                                    new OtpErlangInt(entry.getKey().partition())
+                                    Erlang.binary(topicPartitionOffsetsEntry.getKey().topic()),
+                                    Erlang.integer(topicPartitionOffsetsEntry.getKey().partition())
                             ),
-                            new OtpErlangLong(entry.getValue().offset())
+                            Erlang.longValue(topicPartitionOffsetsEntry.getValue().offset())
                     )
             );
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -218,24 +206,24 @@ public class Main implements Port {
     }
 
     private Integer listConsumerGroups(Admin admin, Port.Command command, Output output) throws InterruptedException {
-
         var options = new ListConsumerGroupsOptions();
 
         OtpErlangObject response;
         try {
             var list = Erlang.toList(
                     admin.listConsumerGroups(options).valid().get(),
-                    entry -> {
-                        var state = entry.state().isPresent() ? new OtpErlangAtom(
-                                entry.state().get().toString().toLowerCase()
-                        ) : new OtpErlangAtom("undefiend");
-                        return Erlang.tuple(new OtpErlangBinary(entry.groupId().getBytes()), state);
+                    consumerGroupListing -> {
+                        var state = consumerGroupListing.state();
+                        var erlangState = state.isPresent() ? Erlang.atom(
+                                state.get().toString().toLowerCase()
+                        ) : Erlang.atom("undefined");
+                        return Erlang.tuple(Erlang.binary(consumerGroupListing.groupId()), erlangState);
                     }
             );
 
             response = Erlang.ok(list);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -253,34 +241,36 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.describeConsumerGroups(consumerGroups).all().get(),
-                    entry -> {
-                        var groupName = new OtpErlangBinary(entry.getKey().getBytes());
+                    groupDescriptionEntry -> {
+                        var groupName = Erlang.binary(groupDescriptionEntry.getKey());
 
-                        var members = Erlang.toList(entry.getValue().members(), member -> {
-                            var consumerId = member.consumerId();
-                            var assignments = Erlang.toList(
-                                    member.assignment().topicPartitions(), assignment -> Erlang.tuple(
-                                            new OtpErlangBinary(assignment.topic().getBytes()),
-                                            new OtpErlangInt(assignment.partition())
-                                    )
-                            );
+                        var members = Erlang.toList(
+                                groupDescriptionEntry.getValue().members(),
+                                member -> {
+                                    var consumerId = member.consumerId();
+                                    var assignments = Erlang.toList(
+                                            member.assignment().topicPartitions(),
+                                            assignment -> Erlang.tuple(
+                                                    Erlang.binary(assignment.topic()),
+                                                    Erlang.integer(assignment.partition())
+                                            )
+                                    );
 
-                            return Erlang.tuple(new OtpErlangBinary(consumerId.getBytes()), assignments);
-                        });
-                        OtpErlangMap description = new OtpErlangMap();
-                        description.put(new OtpErlangAtom("members"), members);
-                        description.put(
-                                new OtpErlangAtom("state"),
-                                new OtpErlangAtom(entry.getValue().state().toString().toLowerCase())
+                                    return Erlang.tuple(Erlang.binary(consumerId), assignments);
+                                }
                         );
-
+                        var consumerGroupState = groupDescriptionEntry.getValue().state().toString().toLowerCase();
+                        OtpErlangMap description = Erlang.mapFromEntries(
+                                Erlang.mapEntry(Erlang.atom("members"), members),
+                                Erlang.mapEntry(Erlang.atom("state"), Erlang.atom(consumerGroupState))
+                        );
                         return Erlang.mapEntry(groupName, description);
                     }
             );
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -298,22 +288,22 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.deleteConsumerGroups(consumerGroups, options).deletedGroups(),
-                    entry -> {
+                    groupDeletionFutureEntry -> {
                         OtpErlangObject result = Erlang.ok();
                         try {
-                            entry.getValue().get();
+                            groupDeletionFutureEntry.getValue().get();
                         } catch (Exception e) {
-                            result = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+                            result = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
                         }
 
-                        return Erlang.mapEntry(new OtpErlangBinary(entry.getKey().getBytes()), result);
+                        return Erlang.mapEntry(Erlang.binary(groupDeletionFutureEntry.getKey()), result);
                     }
             );
 
             response = Erlang.ok(map);
 
         } catch (Exception e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -324,7 +314,6 @@ public class Main implements Port {
     private Integer listConsumerGroupOffsets(
             Admin admin, Port.Command command, Output output
     ) throws InterruptedException {
-
         @SuppressWarnings("unchecked")
         var inputMap = (HashMap<String, Iterable<Object[]>>) command.args()[0];
         var groupSpecs = new HashMap<String, ListConsumerGroupOffsetsSpec>();
@@ -350,34 +339,30 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     admin.listConsumerGroupOffsets(groupSpecs, options).all().get(),
-                    entry -> {
+                    topicPartitionOffsetsEntry -> {
                         var topicPartitions = Erlang.toMap(
-                                entry.getValue(),
-                                innerEntry -> {
-                                    var value = innerEntry.getValue();
-                                    OtpErlangObject offset = value == null ? Erlang.nil() : new OtpErlangLong(
-                                            value.offset()
-                                    );
+                                topicPartitionOffsetsEntry.getValue(),
+                                partitionOffsetsEntry -> {
+                                    var offsets = partitionOffsetsEntry.getValue();
+                                    var partitionTopic = partitionOffsetsEntry.getKey();
+                                    var offset = offsets == null ? Erlang.nil() : Erlang.longValue(offsets.offset());
                                     return Erlang.mapEntry(
                                             Erlang.tuple(
-                                                    new OtpErlangBinary(innerEntry.getKey().topic().getBytes()),
-                                                    new OtpErlangInt(innerEntry.getKey().partition())
+                                                    Erlang.binary(partitionTopic.topic()),
+                                                    Erlang.integer(partitionTopic.partition())
                                             ),
                                             offset
                                     );
                                 }
                         );
 
-                        return Erlang.mapEntry(
-                                new OtpErlangBinary(entry.getKey().getBytes()),
-                                topicPartitions
-                        );
+                        return Erlang.mapEntry(Erlang.binary(topicPartitionOffsetsEntry.getKey()), topicPartitions);
                     }
             );
 
             response = Erlang.ok(map);
         } catch (ExecutionException e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -388,8 +373,9 @@ public class Main implements Port {
     private Integer createTopics(Admin admin, Port.Command command, Output output) throws InterruptedException {
         var newTopics = new LinkedList<NewTopic>();
 
-        for (@SuppressWarnings("unchecked")
-        var newTopicTuple : ((Iterable<Object[]>) command.args()[0])) {
+        @SuppressWarnings("unchecked")
+        var newTopicTuples = (Iterable<Object[]>) command.args()[0];
+        for (var newTopicTuple : newTopicTuples) {
             newTopics.add(
                     new NewTopic(
                             (String) newTopicTuple[0],
@@ -403,7 +389,7 @@ public class Main implements Port {
             admin.createTopics(newTopics).all().get();
             output.emitCallResponse(command, Erlang.ok());
         } catch (ExecutionException e) {
-            output.emitCallResponse(command, Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes())));
+            output.emitCallResponse(command, Erlang.error(Erlang.binary(Utils.getErrorMessage(e))));
         }
 
         return null;
@@ -416,18 +402,10 @@ public class Main implements Port {
             admin.deleteTopics(topics).all().get();
             output.emitCallResponse(command, Erlang.ok());
         } catch (ExecutionException e) {
-            output.emitCallResponse(command, Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes())));
+            output.emitCallResponse(command, Erlang.error(Erlang.binary(Utils.getErrorMessage(e))));
         }
 
         return null;
-    }
-
-    private Properties mapToProperties(Map<Object, Object> map) {
-        // need to remove nulls, because Properties doesn't support them
-        map.values().removeAll(Collections.singleton(null));
-        var result = new Properties();
-        result.putAll(map);
-        return result;
     }
 
     @FunctionalInterface
