@@ -2,6 +2,8 @@ package com.happening.kafka.port;
 
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangBinary;
+import com.ericsson.otp.erlang.OtpErlangDouble;
+import com.ericsson.otp.erlang.OtpErlangInt;
 import com.ericsson.otp.erlang.OtpErlangList;
 import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangMap;
@@ -9,7 +11,9 @@ import com.ericsson.otp.erlang.OtpErlangObject;
 import com.ericsson.otp.erlang.OtpErlangTuple;
 import com.ericsson.otp.erlang.OtpInputStream;
 import com.ericsson.otp.erlang.OtpOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,10 +30,13 @@ import java.util.stream.StreamSupport;
  * Most of the heavy lifting is powered by JInterface
  * (https://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html).
  */
-public class Erlang {
+public final class Erlang {
+    private Erlang() {
+    }
+
     // This is basically a Java version of Erlang's term_to_binary.
-    public static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
-        try (var otpOutStream = new OtpOutputStream(erlangTerm); var byteStream = new java.io.ByteArrayOutputStream()) {
+    static byte[] encode(OtpErlangObject erlangTerm) throws IOException {
+        try (var otpOutStream = new OtpOutputStream(erlangTerm); var byteStream = new ByteArrayOutputStream()) {
             // OtpOutputStream.writeToAndFlush produces the binary without the leading
             // version number byte (131), so we need to include it ourselves.
             //
@@ -50,12 +57,16 @@ public class Erlang {
         return new OtpErlangAtom("nil");
     }
 
-    public static OtpErlangTuple tuple(OtpErlangObject... elements) {
-        return new OtpErlangTuple(elements);
-    }
-
     public static OtpErlangAtom ok() {
         return new OtpErlangAtom("ok");
+    }
+
+    public static OtpErlangAtom atom(String value) {
+        return new OtpErlangAtom(value);
+    }
+
+    public static OtpErlangAtom atom(boolean value) {
+        return new OtpErlangAtom(value);
     }
 
     public static OtpErlangTuple ok(OtpErlangObject... values) {
@@ -68,6 +79,30 @@ public class Erlang {
 
     public static OtpErlangTuple error(OtpErlangObject value) {
         return tuple(new OtpErlangAtom("error"), value);
+    }
+
+    public static OtpErlangTuple tuple(OtpErlangObject... elements) {
+        return new OtpErlangTuple(elements);
+    }
+
+    public static OtpErlangBinary binary(String value) {
+        return new OtpErlangBinary(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static OtpErlangBinary binary(byte[] value) {
+        return new OtpErlangBinary(value);
+    }
+
+    public static OtpErlangInt integer(int value) {
+        return new OtpErlangInt(value);
+    }
+
+    public static OtpErlangLong longValue(long value) {
+        return new OtpErlangLong(value);
+    }
+
+    public static OtpErlangDouble doubleValue(double value) {
+        return new OtpErlangDouble(value);
     }
 
     public static <T> OtpErlangList toList(Iterable<T> iterable, Function<T, OtpErlangObject> mapper) {
@@ -87,6 +122,15 @@ public class Erlang {
         }
 
         return erlangMap;
+    }
+
+    @SafeVarargs
+    public static OtpErlangMap mapFromEntries(Map.Entry<OtpErlangObject, OtpErlangObject>... entries) {
+        var map = new OtpErlangMap();
+        for (Map.Entry<OtpErlangObject, OtpErlangObject> entry : entries) {
+            map.put(entry.getKey(), entry.getValue());
+        }
+        return map;
     }
 
     public static Map.Entry<OtpErlangObject, OtpErlangObject> mapEntry(
@@ -110,7 +154,7 @@ public class Erlang {
      * - tuple is decoded as Object[]
      * - map is decoded as Map<Object, Object>
      */
-    public static Object decode(byte[] encoded) throws Exception {
+    static Object decode(byte[] encoded) throws Exception {
         try (var inputStream = new OtpInputStream(encoded)) {
             return fromErlang(inputStream.read_any());
         }
@@ -133,7 +177,7 @@ public class Erlang {
         }
 
         if (value instanceof OtpErlangBinary) {
-            return new String(((OtpErlangBinary) value).binaryValue());
+            return new String(((OtpErlangBinary) value).binaryValue(), StandardCharsets.UTF_8);
         }
 
         if (value instanceof OtpErlangLong) {

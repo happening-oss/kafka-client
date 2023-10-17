@@ -1,18 +1,15 @@
 package com.happening.kafka.consumer;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangInt;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
+import com.happening.kafka.Utils;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +20,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.InterruptException;
 
 /*
  * Implements the consumer port, which runs the kafka poller loop, and
@@ -41,13 +39,16 @@ public class Main implements Port, ConsumerRebalanceListener {
         Driver.run(args, new Main());
     }
 
+    private static final int POLL_DURATION_MS = 10;
+    private static final int COMMIT_INTERVAL_MS = 5000;
+
     private Output output;
     private Commits commits;
     private Backpressure backpressure;
-    private HashMap<TopicPartition, Long> endOffsets;
+    private Map<TopicPartition, Long> endOffsets;
     private boolean isAnonymous;
 
-    private Map<String, Handler> dispatchMap = Map.ofEntries(
+    private final Map<String, Handler> dispatchMap = Map.ofEntries(
             Map.entry("stop", this::stop),
             Map.entry("ack", this::ack)
     );
@@ -56,25 +57,25 @@ public class Main implements Port, ConsumerRebalanceListener {
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         this.output = output;
 
-        var opts = opts(args);
-        isAnonymous = (opts.consumerProps().getProperty("group.id") == null);
+        var opts = this.opts(args);
+        this.isAnonymous = (opts.consumerProps().getProperty("group.id") == null);
 
         try (var consumer = new Consumer(opts.consumerProps())) {
-            if (isAnonymous) {
-                startAnonymousConsuming(consumer, opts.subscriptions);
+            if (this.isAnonymous) {
+                this.startAnonymousConsuming(consumer, opts.subscriptions);
             } else {
-                startConsumerGroupConsuming(consumer, opts.subscriptions);
+                this.startConsumerGroupConsuming(consumer, opts.subscriptions);
             }
 
-            var pollDuration = (int) opts.pollerProps().getOrDefault("poll_duration", 10);
-            var commitInterval = (int) opts.pollerProps().getOrDefault("commit_interval", 5000);
-            commits = new Commits(consumer, commitInterval);
-            backpressure = new Backpressure(consumer);
+            var pollDuration = (int) opts.pollerProps().getOrDefault("poll_duration", POLL_DURATION_MS);
+            var commitInterval = (int) opts.pollerProps().getOrDefault("commit_interval", COMMIT_INTERVAL_MS);
+            this.commits = new Commits(consumer, commitInterval);
+            this.backpressure = new Backpressure(consumer);
 
             while (true) {
                 // commands issued by Elixir, such as ack or stop
                 for (var command : worker.drainCommands()) {
-                    var exitCode = dispatchMap.get(command.name()).handle(consumer, command);
+                    var exitCode = this.dispatchMap.get(command.name()).handle(consumer, command);
                     if (exitCode != null) {
                         return exitCode;
                     }
@@ -82,12 +83,12 @@ public class Main implements Port, ConsumerRebalanceListener {
 
                 // Backpressure and commits are collected while handling Elixir
                 // commands. Now we're flushing the final state (pauses and commits).
-                backpressure.flush();
-                if (!isAnonymous) {
-                    commits.flush(false);
+                this.backpressure.flush();
+                if (!this.isAnonymous) {
+                    this.commits.flush(false);
                 }
 
-                var records = consumer.poll(java.time.Duration.ofMillis(pollDuration));
+                var records = consumer.poll(Duration.ofMillis(pollDuration));
 
                 for (var record : records) {
                     // Each record is sent separately to Elixir, instead of sending them
@@ -95,7 +96,7 @@ public class Main implements Port, ConsumerRebalanceListener {
                     // processing each record as soon as it arrives, instead of waiting
                     // for all the records to be received.
                     output.emit(recordToOtp(record), true);
-                    backpressure.recordPolled(record);
+                    this.backpressure.recordPolled(record);
                 }
             }
         }
@@ -103,12 +104,13 @@ public class Main implements Port, ConsumerRebalanceListener {
 
     private Opts opts(Object[] args) {
         @SuppressWarnings("unchecked")
-        var consumerProps = mapToProperties((Map<Object, Object>) args[0]);
+        var consumerProps = Utils.toProperties((Map<Object, Object>) args[0]);
 
         var subscriptions = new ArrayList<Subscription>();
 
-        for (@SuppressWarnings("unchecked")
-        var subscription : (Iterable<Object[]>) args[1]) {
+        @SuppressWarnings("unchecked")
+        var argsSubscriptions = (Iterable<Object[]>) args[1];
+        for (var subscription : argsSubscriptions) {
             var topic = (String) subscription[0];
             var partitionNo = (int) subscription[1];
             var partition = new TopicPartition(topic, partitionNo);
@@ -129,33 +131,34 @@ public class Main implements Port, ConsumerRebalanceListener {
     }
 
     private int stop(Consumer consumer, Port.Command command) {
-        if (!isAnonymous) {
-            commits.flush(true);
+        if (!this.isAnonymous) {
+            this.commits.flush(true);
         }
 
         return 0;
     }
 
     private Integer ack(Consumer consumer, Port.Command command) throws InterruptedException {
-        for (@SuppressWarnings("unchecked")
-        var record : (Iterable<List<Object>>) command.args()[0]) {
+        @SuppressWarnings("unchecked")
+        var records = (Iterable<List<Object>>) command.args()[0];
+        for (var record : records) {
             var array = record.toArray();
             var ack = new ConsumerPosition(toTopicPartition(array), toLong(array[2]));
 
-            backpressure.recordProcessed(ack.partition());
+            this.backpressure.recordProcessed(ack.partition());
 
-            if (isAnonymous) {
-                if (endOffsets != null) {
+            if (this.isAnonymous) {
+                if (this.endOffsets != null) {
 
                     var endOffset = this.endOffsets.get(ack.partition);
                     if (endOffset != null && endOffset - 1 <= ack.offset()) {
                         this.endOffsets.remove(ack.partition());
                     }
 
-                    maybeEmitCaughtUp();
+                    this.maybeEmitCaughtUp();
                 }
             } else {
-                commits.add(ack.partition(), ack.offset());
+                this.commits.add(ack.partition(), ack.offset());
             }
         }
 
@@ -173,7 +176,7 @@ public class Main implements Port, ConsumerRebalanceListener {
             return (long) value;
         }
 
-        return (long) ((int) value);
+        return (int) value;
     }
 
     private void startConsumerGroupConsuming(Consumer consumer, Collection<Subscription> subscriptions) {
@@ -189,16 +192,16 @@ public class Main implements Port, ConsumerRebalanceListener {
     ) throws InterruptedException {
         // When not in a consumer group we need to manually self-assign the desired
         // partitions
-        var assignments = assignPartitions(consumer, subscriptions);
+        var assignments = this.assignPartitions(consumer, subscriptions);
 
         // In this mode the consumer may also ask to start at a particular position
-        seekToPositions(consumer, subscriptions);
+        this.seekToPositions(consumer, subscriptions);
 
         // We'll also fire the assigned notification manually, since the
         // onPartitionsAssigned callback is not invoked on manual assignment. This
         // keeps the behaviour consistent and supports synchronism on the
         // processor side.
-        onPartitionsAssigned(assignments);
+        this.onPartitionsAssigned(assignments);
 
         // We'll also store the end offsets of all assigned partitions. This
         // allows us to fire the "caught_up" notification, issued after all the
@@ -214,7 +217,7 @@ public class Main implements Port, ConsumerRebalanceListener {
             }
         }
 
-        maybeEmitCaughtUp();
+        this.maybeEmitCaughtUp();
     }
 
     private ArrayList<TopicPartition> assignPartitions(Consumer consumer, Collection<Subscription> subscriptions) {
@@ -238,8 +241,10 @@ public class Main implements Port, ConsumerRebalanceListener {
 
     private void seekToPositions(Consumer consumer, Collection<Subscription> subscriptions) {
         var subscriptionsWithType = subscriptions.stream().filter(subscription -> subscription.type() != null).toList();
-        seekToOffsets(consumer, subscriptionsWithType.stream().filter(subscription -> subscription.type() == 0));
-        seekToTimestamps(consumer, subscriptionsWithType.stream().filter(subscription -> subscription.type() == 1));
+        this.seekToOffsets(consumer, subscriptionsWithType.stream().filter(subscription -> subscription.type() == 0));
+        this.seekToTimestamps(
+                consumer, subscriptionsWithType.stream().filter(subscription -> subscription.type() == 1)
+        );
     }
 
     private void seekToOffsets(Consumer consumer, Stream<Subscription> subscriptions) {
@@ -247,14 +252,14 @@ public class Main implements Port, ConsumerRebalanceListener {
             if (subscription.partition().partition() >= 0) {
                 consumer.seek(subscription.partition(), subscription.position());
             } else {
-                seekAllPartitionsToPosition(consumer, subscription);
+                this.seekAllPartitionsToPosition(consumer, subscription);
             }
         });
     }
 
     private void seekAllPartitionsToPosition(Consumer consumer, Subscription subscription) {
         consumer.partitionsFor(subscription.partition().topic()).forEach(
-                partitionInfo -> consumer.seek(toTopicPartition(partitionInfo), subscription.position())
+                partitionInfo -> consumer.seek(this.toTopicPartition(partitionInfo), subscription.position())
         );
     }
 
@@ -265,7 +270,7 @@ public class Main implements Port, ConsumerRebalanceListener {
             if (subscription.partition().partition() >= 0) {
                 timestampsToSearch.put(subscription.partition(), subscription.position());
             } else {
-                addTimestampsForAllPartitions(consumer, timestampsToSearch, subscription);
+                this.addTimestampsForAllPartitions(consumer, timestampsToSearch, subscription);
             }
         });
 
@@ -283,98 +288,88 @@ public class Main implements Port, ConsumerRebalanceListener {
     ) {
 
         consumer.partitionsFor(subscription.partition().topic()).forEach(
-                partitionInfo -> timestampsToSearch.put(
-                        toTopicPartition(partitionInfo),
-                        subscription.position()
-                )
+                partitionInfo -> timestampsToSearch.put(this.toTopicPartition(partitionInfo), subscription.position())
         );
     }
 
     private void maybeEmitCaughtUp() throws InterruptedException {
-        if (endOffsets.isEmpty()) {
-            output.emit(new OtpErlangAtom("caught_up"));
-            endOffsets = null;
+        if (this.endOffsets.isEmpty()) {
+            this.output.emit(Erlang.atom("caught_up"));
+            this.endOffsets = null;
         }
     }
 
     @Override
     public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
-        emitRebalanceEvent("assigned", partitions);
+        this.emitRebalanceEvent("assigned", partitions);
     }
 
     @Override
     public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
-        commits.partitionsRevoked(partitions);
-        backpressure.removePartitions(partitions);
-        emitRebalanceEvent("unassigned", partitions);
+        this.commits.partitionsRevoked(partitions);
+        this.backpressure.removePartitions(partitions);
+        this.emitRebalanceEvent("unassigned", partitions);
     }
 
     @Override
     public void onPartitionsLost(Collection<TopicPartition> partitions) {
-        commits.partitionsLost(partitions);
-        backpressure.removePartitions(partitions);
-        emitRebalanceEvent("unassigned", partitions);
+        this.commits.partitionsLost(partitions);
+        this.backpressure.removePartitions(partitions);
+        this.emitRebalanceEvent("unassigned", partitions);
     }
 
     private void emitRebalanceEvent(String event, Collection<TopicPartition> partitions) {
         try {
-            output.emit(
+            this.output.emit(
                     Erlang.tuple(
-                            new OtpErlangAtom(event),
+                            Erlang.atom(event),
                             Erlang.toList(
                                     partitions,
                                     partition -> Erlang.tuple(
-                                            new OtpErlangBinary(partition.topic().getBytes()),
-                                            new OtpErlangInt(partition.partition())
+                                            Erlang.binary(partition.topic()),
+                                            Erlang.integer(partition.partition())
                                     )
                             )
                     )
             );
         } catch (InterruptedException e) {
-            throw new org.apache.kafka.common.errors.InterruptException(e);
+            throw new InterruptException(e);
         }
     }
 
-    static private OtpErlangObject recordToOtp(ConsumerRecord<byte[], byte[]> record) {
+    private static OtpErlangObject recordToOtp(ConsumerRecord<byte[], byte[]> record) {
         var headers = Erlang.toList(
                 record.headers(),
                 header -> Erlang.tuple(
-                        new OtpErlangBinary(header.key().getBytes()),
-                        new OtpErlangBinary(header.value())
+                        Erlang.binary(header.key()),
+                        Erlang.binary(header.value())
                 )
         );
 
         return Erlang.tuple(
-                new OtpErlangAtom("record"),
-                new OtpErlangBinary(record.topic().getBytes()),
-                new OtpErlangInt(record.partition()),
-                new OtpErlangLong(record.offset()),
-                new OtpErlangLong(record.timestamp()),
+                Erlang.atom("record"),
+                Erlang.binary(record.topic()),
+                Erlang.integer(record.partition()),
+                Erlang.longValue(record.offset()),
+                Erlang.longValue(record.timestamp()),
                 headers,
-                record.key() == null ? Erlang.nil() : new OtpErlangBinary(record.key()),
-                record.value() == null ? Erlang.nil() : new OtpErlangBinary(record.value())
+                record.key() == null ? Erlang.nil() : Erlang.binary(record.key()),
+                record.value() == null ? Erlang.nil() : Erlang.binary(record.value())
         );
-    }
-
-    private Properties mapToProperties(Map<Object, Object> map) {
-        // need to remove nulls, because Properties doesn't support them
-        map.values().removeAll(Collections.singleton(null));
-        var result = new Properties();
-        result.putAll(map);
-        return result;
     }
 
     private TopicPartition toTopicPartition(PartitionInfo partitionInfo) {
         return new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
     }
 
-    record Opts(Properties consumerProps, Collection<Subscription> subscriptions, Map<String, Object> pollerProps) {
+    private record Opts(Properties consumerProps, Collection<Subscription> subscriptions,
+                        Map<String, Object> pollerProps) {
     }
 
-    record ConsumerPosition(TopicPartition partition, long offset) {
+    private record ConsumerPosition(TopicPartition partition, long offset) {
     }
 
-    record Subscription(TopicPartition partition, Integer type, Long position) {
+    private record Subscription(TopicPartition partition, Integer type, Long position) {
     }
 
     @FunctionalInterface
@@ -384,7 +379,7 @@ public class Main implements Port, ConsumerRebalanceListener {
 }
 
 final class Consumer extends KafkaConsumer<byte[], byte[]> {
-    public Consumer(Properties properties) {
+    Consumer(Properties properties) {
         super(properties);
     }
 }

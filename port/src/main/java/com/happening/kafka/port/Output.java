@@ -1,8 +1,5 @@
 package com.happening.kafka.port;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import java.io.DataOutputStream;
 import java.io.FileOutputStream;
@@ -18,7 +15,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * details on data encoding.
  */
 public final class Output implements Runnable {
-    public static Output start() {
+    static Output start() {
         var output = new Output();
 
         // Using a daemon thread to ensure program termination if the main thread stops.
@@ -29,24 +26,24 @@ public final class Output implements Runnable {
         return output;
     }
 
-    private BlockingQueue<Message> messages;
+    private final BlockingQueue<Message> messages;
 
     private Output() {
-        messages = new LinkedBlockingQueue<>();
+        this.messages = new LinkedBlockingQueue<>();
     }
 
     public void emitCallResponse(Port.Command command, OtpErlangObject response) throws InterruptedException {
-        emit(
+        this.emit(
                 Erlang.tuple(
-                        new OtpErlangAtom("$kafka_consumer_response"),
-                        new OtpErlangBinary(command.ref().getBytes()),
+                        Erlang.atom("$kafka_consumer_response"),
+                        Erlang.binary(command.ref()),
                         response
                 )
         );
     }
 
     public void emit(OtpErlangObject message) throws InterruptedException {
-        emit(message, false);
+        this.emit(message, false);
     }
 
     public void emit(OtpErlangObject message, boolean emitMetrics) throws InterruptedException {
@@ -55,7 +52,7 @@ public final class Output implements Runnable {
             now = System.nanoTime();
         }
 
-        messages.put(new Message(message, now));
+        this.messages.put(new Message(message, now));
     }
 
     @Override
@@ -67,18 +64,18 @@ public final class Output implements Runnable {
 
                 // writing to the port is to some extent a blocking operation, so we measure it
                 var sendingAt = System.nanoTime();
-                notify(output, message.payload());
+                this.notify(output, message.payload());
                 var sentAt = System.nanoTime();
 
                 if (message.startTime() != null) {
                     // send the measurement to the output
                     var duration = sentAt - message.startTime();
-                    notify(
+                    this.notify(
                             output,
                             Erlang.tuple(
-                                    new OtpErlangAtom("metrics"),
-                                    new OtpErlangLong(sentAt - sendingAt),
-                                    new OtpErlangLong(duration)
+                                    Erlang.atom("metrics"),
+                                    Erlang.longValue(sentAt - sendingAt),
+                                    Erlang.longValue(duration)
                             )
                     );
                 }
@@ -103,6 +100,6 @@ public final class Output implements Runnable {
         output.write(payload);
     }
 
-    record Message(OtpErlangObject payload, Long startTime) {
+    private record Message(OtpErlangObject payload, Long startTime) {
     }
 }

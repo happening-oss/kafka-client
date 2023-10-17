@@ -1,18 +1,13 @@
 package com.happening.kafka.producer;
 
-import com.ericsson.otp.erlang.OtpErlangAtom;
-import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangDouble;
-import com.ericsson.otp.erlang.OtpErlangInt;
-import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
+import com.happening.kafka.Utils;
 import com.happening.kafka.port.Driver;
 import com.happening.kafka.port.Erlang;
 import com.happening.kafka.port.Output;
 import com.happening.kafka.port.Port;
 import com.happening.kafka.port.Worker;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Properties;
@@ -20,6 +15,7 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
 
@@ -29,7 +25,7 @@ public class Main implements Port {
         Driver.run(args, new Main());
     }
 
-    private Map<String, Handler> dispatchMap = Map.ofEntries(
+    private final Map<String, Handler> dispatchMap = Map.ofEntries(
             Map.entry("partitions_for", this::partitionsFor),
             Map.entry("metrics", this::metrics),
             Map.entry("stop", this::stop),
@@ -39,12 +35,12 @@ public class Main implements Port {
     @Override
     public int run(Worker worker, Output output, Object[] args) throws Exception {
         @SuppressWarnings("unchecked")
-        var props = mapToProperties((Map<Object, Object>) args[0]);
+        var props = Utils.toProperties((Map<Object, Object>) args[0]);
 
         try (var producer = new Producer(props)) {
             while (true) {
                 var command = worker.take();
-                var exitCode = dispatchMap.get(command.name()).handle(producer, command, output);
+                var exitCode = this.dispatchMap.get(command.name()).handle(producer, command, output);
                 if (exitCode != null) {
                     return exitCode;
                 }
@@ -57,22 +53,22 @@ public class Main implements Port {
         try {
             var map = Erlang.toMap(
                     producer.metrics(),
-                    entry -> {
+                    metricNameEntry -> {
                         OtpErlangObject value;
-                        var metricsValue = entry.getValue().metricValue();
-                        if (metricsValue instanceof java.lang.Double val) {
-                            value = Double.isNaN(val) ? Erlang.nil() : new OtpErlangDouble(val);
-                        } else if (metricsValue instanceof java.lang.Long val) {
-                            value = new OtpErlangLong(val);
+                        var metricsValue = metricNameEntry.getValue().metricValue();
+                        if (metricsValue instanceof Double val) {
+                            value = Double.isNaN(val) ? Erlang.nil() : Erlang.doubleValue(val);
+                        } else if (metricsValue instanceof Long val) {
+                            value = Erlang.longValue(val);
                         } else {
-                            value = new OtpErlangBinary(metricsValue.toString().getBytes());
+                            value = Erlang.binary(metricsValue.toString());
                         }
-                        return Erlang.mapEntry(new OtpErlangBinary(entry.getKey().name().getBytes()), value);
+                        return Erlang.mapEntry(Erlang.binary(metricNameEntry.getKey().name()), value);
                     }
             );
             response = Erlang.ok(map);
         } catch (Exception e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -89,11 +85,11 @@ public class Main implements Port {
         try {
             var list = Erlang.toList(
                     producer.partitionsFor(topic),
-                    entry -> new OtpErlangInt(entry.partition())
+                    entry -> Erlang.integer(entry.partition())
             );
             response = Erlang.ok(list);
         } catch (Exception e) {
-            response = Erlang.error(new OtpErlangBinary(e.getCause().getMessage().getBytes()));
+            response = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
         }
 
         output.emitCallResponse(command, response);
@@ -106,20 +102,22 @@ public class Main implements Port {
         return 0;
     }
 
-    private Integer send(
-            Producer producer, Port.Command command, Output output
-    ) {
+    private Integer send(Producer producer, Port.Command command, Output output) {
         @SuppressWarnings("unchecked")
         var record = (Map<String, Object>) command.args()[0];
 
         var headers = new LinkedList<Header>();
-        for (@SuppressWarnings("unchecked")
-        var header : (Collection<Object[]>) record.get("headers")) {
+
+        @SuppressWarnings("unchecked")
+        var recordHeaders = (Collection<Object[]>) record.get("headers");
+        for (var header : recordHeaders) {
             headers.add(new Header() {
+                @Override
                 public String key() {
                     return (String) header[0];
                 }
 
+                @Override
                 public byte[] value() {
                     return (byte[]) header[1];
                 }
@@ -134,27 +132,21 @@ public class Main implements Port {
 
                 if (e != null) {
                     if (e instanceof TimeoutException) {
-                        payload = Erlang.error(new OtpErlangAtom("timeout"));
+                        payload = Erlang.error(Erlang.atom("timeout"));
                     } else {
-                        payload = Erlang.error(new OtpErlangBinary(e.getMessage().getBytes()));
+                        payload = Erlang.error(Erlang.binary(Utils.getErrorMessage(e)));
                     }
                 } else {
                     payload = Erlang.ok(
-                            new OtpErlangInt(metadata.partition()),
-                            new OtpErlangLong(metadata.offset()),
-                            new OtpErlangLong(metadata.timestamp())
+                            Erlang.integer(metadata.partition()),
+                            Erlang.longValue(metadata.offset()),
+                            Erlang.longValue(metadata.timestamp())
                     );
                 }
                 try {
-                    output.emit(
-                            Erlang.tuple(
-                                    new OtpErlangAtom("on_completion"),
-                                    new OtpErlangBinary(callbackId),
-                                    payload
-                            )
-                    );
+                    output.emit(Erlang.tuple(Erlang.atom("on_completion"), Erlang.binary(callbackId), payload));
                 } catch (InterruptedException ie) {
-                    throw new org.apache.kafka.common.errors.InterruptException(ie);
+                    throw new InterruptException(ie);
                 }
             };
         }
@@ -174,14 +166,6 @@ public class Main implements Port {
         return null;
     }
 
-    private Properties mapToProperties(Map<Object, Object> map) {
-        // need to remove nulls, because Properties doesn't support them
-        map.values().removeAll(Collections.singleton(null));
-        var result = new Properties();
-        result.putAll(map);
-        return result;
-    }
-
     @FunctionalInterface
     interface Handler {
         Integer handle(Producer producer, Port.Command command, Output output) throws Exception;
@@ -189,7 +173,7 @@ public class Main implements Port {
 }
 
 final class Producer extends KafkaProducer<byte[], byte[]> {
-    public Producer(Properties properties) {
+    Producer(Properties properties) {
         super(properties);
     }
 }

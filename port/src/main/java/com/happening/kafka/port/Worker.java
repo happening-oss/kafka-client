@@ -8,8 +8,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 /*
  * The worker thread of a port program. See {@link Driver} for details.
  */
-public class Worker implements Runnable {
-    public static Worker start(Port port, Output output, Object[] args) {
+public final class Worker implements Runnable {
+    static Worker start(Port port, Output output, Object[] args) {
         var worker = new Worker(port, output, args);
 
         // Using a daemon thread to ensure program termination if the main thread stops.
@@ -20,10 +20,10 @@ public class Worker implements Runnable {
         return worker;
     }
 
-    private BlockingQueue<Port.Command> commands = new LinkedBlockingQueue<>();
-    private Port port;
-    private Output output;
-    private Object[] args;
+    private final BlockingQueue<Port.Command> commands = new LinkedBlockingQueue<>();
+    private final Port port;
+    private final Output output;
+    private final Object[] args;
 
     private Worker(Port port, Output output, Object[] args) {
         this.port = port;
@@ -34,7 +34,7 @@ public class Worker implements Runnable {
     @Override
     public void run() {
         try {
-            var exitStatus = port.run(this, output, args);
+            var exitStatus = this.port.run(this, this.output, this.args);
             System.exit(exitStatus);
         } catch (Exception e) {
             System.err.println(e.getMessage());
@@ -43,17 +43,17 @@ public class Worker implements Runnable {
         }
     }
 
-    public void sendCommand(Port.Command command) {
-        commands.add(command);
+    void sendCommand(Port.Command command) {
+        this.commands.add(command);
     }
 
     public Collection<Port.Command> drainCommands() {
         var result = new ArrayList<Port.Command>();
-        commands.drainTo(result);
+        this.commands.drainTo(result);
         return result;
     }
 
     public Port.Command take() throws InterruptedException {
-        return commands.take();
+        return this.commands.take();
     }
 }

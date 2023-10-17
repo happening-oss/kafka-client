@@ -1,9 +1,12 @@
 package com.happening.kafka.consumer;
 
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 
@@ -20,97 +23,99 @@ import org.apache.kafka.common.TopicPartition;
  * be resumed.
  */
 final class Backpressure {
-    private Consumer consumer;
-    private HashSet<TopicPartition> pausedPartitions = new HashSet<>();
-    private HashMap<TopicPartition, Queue> queues = new HashMap<>();
+    private final Consumer consumer;
+    private final Set<TopicPartition> pausedPartitions = new HashSet<>();
+    private final Map<TopicPartition, Queue> queues = new HashMap<>();
 
-    public Backpressure(Consumer consumer) {
+    Backpressure(Consumer consumer) {
         this.consumer = consumer;
     }
 
     // Invoked by the poller when a record is polled from the broker.
-    public void recordPolled(ConsumerRecord<byte[], byte[]> record) {
+    void recordPolled(ConsumerRecord<byte[], byte[]> record) {
         var partition = new TopicPartition(record.topic(), record.partition());
-        var queue = queues.get(partition);
+        var queue = this.queues.get(partition);
         if (queue == null) {
             queue = new Queue();
-            queues.put(partition, queue);
+            this.queues.put(partition, queue);
         }
 
         queue.recordPolled(record);
         if (queue.shouldPause()) {
-            pausedPartitions.add(partition);
+            this.pausedPartitions.add(partition);
         }
     }
 
     // Invoked by the poller when a record has been fully processed in Elixir.
-    public void recordProcessed(TopicPartition partition) {
-        var queue = queues.get(partition);
+    void recordProcessed(TopicPartition partition) {
+        var queue = this.queues.get(partition);
         if (queue != null) {
             queue.recordProcessed();
 
             if (queue.shouldResume()) {
-                pausedPartitions.remove(partition);
+                this.pausedPartitions.remove(partition);
             }
         }
     }
 
     // Invoked to flush all pauses/resumes.
-    public void flush() {
-        queues.keySet().retainAll(consumer.assignment());
+    void flush() {
+        this.queues.keySet().retainAll(this.consumer.assignment());
 
         // Note that we're not clearing pauses. That way we'll end up invoking `pause`
         // before every poll, but that's ok, because it's an idempotent in-memory
         // operation. By doing this we ensure that a partition remains paused after a
         // rebalance.
-        pausedPartitions.retainAll(consumer.assignment());
-        consumer.pause(pausedPartitions);
+        this.pausedPartitions.retainAll(this.consumer.assignment());
+        this.consumer.pause(this.pausedPartitions);
 
         // Resumed partitions are all assigned partitions which are not paused. Just
         // like with pauses, this will end up resuming non-paused partitions, but that's
         // a non-op, so it's fine.
-        var resumedPartitions = new HashSet<>(consumer.assignment());
-        resumedPartitions.removeAll(pausedPartitions);
-        consumer.resume(resumedPartitions);
+        var resumedPartitions = new HashSet<>(this.consumer.assignment());
+        resumedPartitions.removeAll(this.pausedPartitions);
+        this.consumer.resume(resumedPartitions);
     }
 
     // Invoked by the poller when the partitions are lost due to a rebalance.
-    public void removePartitions(Collection<TopicPartition> partitions) {
-        pausedPartitions.removeAll(partitions);
+    void removePartitions(Collection<TopicPartition> partitions) {
+        this.pausedPartitions.removeAll(partitions);
     }
 
-    final class Queue {
-        private LinkedList<Integer> messageSizes = new LinkedList<>();
+    static final class Queue {
+
+        private static final int PAUSE_THRESHOLD_BYTES = 1000000;
+        private static final int PAUSE_THRESHOLD_MESSAGES = 1000;
+        private static final int RESUME_THRESHOLD_BYTES = 500000;
+        private static final int RESUME_THRESHOLD_MESSAGES = 500;
+
+        private final Deque<Integer> messageSizes = new LinkedList<>();
         private int totalBytes = 0;
 
-        public boolean isEmpty() {
-            return numMessages() == 0;
-        }
-
-        public void recordPolled(ConsumerRecord<byte[], byte[]> record) {
+        void recordPolled(ConsumerRecord<byte[], byte[]> record) {
             var messageSize = 0;
             if (record.value() != null) {
                 messageSize = record.value().length;
             }
-            messageSizes.add(messageSize);
-            totalBytes += messageSize;
+            this.messageSizes.add(messageSize);
+            this.totalBytes += messageSize;
         }
 
-        public void recordProcessed() {
-            var messageSize = messageSizes.remove();
-            totalBytes -= messageSize;
+        void recordProcessed() {
+            var messageSize = this.messageSizes.remove();
+            this.totalBytes -= messageSize;
         }
 
-        public boolean shouldPause() {
-            return (numMessages() >= 2 && (totalBytes >= 1000000 || numMessages() >= 1000));
+        boolean shouldPause() {
+            return this.numMessages() >= 2 && (this.totalBytes >= PAUSE_THRESHOLD_BYTES || this.numMessages() >= PAUSE_THRESHOLD_MESSAGES);
         }
 
-        public boolean shouldResume() {
-            return (numMessages() < 2 || (totalBytes <= 500000 && numMessages() <= 500));
+        boolean shouldResume() {
+            return this.numMessages() < 2 || this.totalBytes <= RESUME_THRESHOLD_BYTES && this.numMessages() <= RESUME_THRESHOLD_MESSAGES;
         }
 
         private int numMessages() {
-            return messageSizes.size();
+            return this.messageSizes.size();
         }
     }
 }
