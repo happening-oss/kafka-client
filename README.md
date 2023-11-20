@@ -26,7 +26,7 @@ Therefore, this library takes a different approach. Instead of spending a lot of
 
 The required tools and versions are specified in the .tool-versions file. You can use the [asdf version manager](https://asdf-vm.com/) to install them. You can also use newer versions in your own projects (unless there are some breaking changes).
 
-You also need to run Kafka and Zookeeper. This project includes the docker-compose.yml file which starts these services.
+You also need to run Kafka. You can start it with the included `docker-compose.yml` file.
 
 This library is currently not published to hex.pm, so you need to add it as a github dependency:
 
